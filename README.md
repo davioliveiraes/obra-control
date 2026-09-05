@@ -119,10 +119,10 @@ A constraint PostgreSQL `organizations_membership_org_user_unique` garante um
 único vínculo por organização/usuário, inclusive quando ele está inativo.
 Excluir qualquer uma das entidades remove suas memberships por `CASCADE`.
 
-Criar uma organização não cria OWNER automaticamente. Não há tenant context,
-isolamento automático, middleware multi-tenant, permission classes ou API de
-organizações/memberships. As migrations continuam sendo operações explícitas,
-usando os comandos documentados acima.
+Criar uma organização não cria OWNER automaticamente. Não há CRUD HTTP de
+organizações/memberships, RBAC ou isolamento automático de querysets. O contexto
+de sessão está descrito na Etapa 5 abaixo. As migrations continuam sendo operações
+explícitas, usando os comandos documentados acima.
 
 ## Autenticação web (Etapa 4)
 
@@ -164,9 +164,47 @@ compatíveis com HTTP local. O cookie CSRF segue o padrão legível do Django.
 Não há CORS adicional: a integração React e suas origens serão avaliadas quando
 existir uma topologia real; produção deve preferir mesma origem via proxy.
 
-Não há JWT, tokens de API, contexto de organização ou autorização por papéis
-empresariais. Esta etapa não implementa limitação de tentativas de login;
+Não há JWT, tokens de API ou autorização por papéis empresariais. Login não
+seleciona organização automaticamente. Não há limitação de tentativas de login;
 proteção contra abuso deve ser definida antes de exposição pública em produção.
+
+## Organização ativa na sessão (Etapa 5)
+
+O usuário escolhe explicitamente uma organização acessível. Entre os dados de
+tenant, somente `current_organization_id` é armazenado na sessão Django; os dados
+nativos de autenticação permanecem nela. Nome, role, Membership e objetos não são
+armazenados. Nada foi adicionado ao User.
+
+`OrganizationContextMiddleware` executa após AuthenticationMiddleware e define
+sempre `request.organization` e `request.membership`. Com seleção ativa, consulta
+Membership filtrando simultaneamente usuário autenticado, organização e
+`is_active=True`, usando `select_related("organization")`. Sem seleção, não há
+consulta de Membership. Sessões anônimas não resolvem tenant.
+
+Se a Membership for desativada/removida, a organização excluída ou o ID da sessão
+for inválido, o contexto fica vazio e a chave é removida na próxima request.
+O papel retornado vem do banco a cada request, nunca de um cache na sessão.
+
+Todas as operações abaixo exigem sessão autenticada:
+
+- `GET /api/v1/organizations/`: lista somente vínculos ativos do usuário como
+  `{id, name, role}`, sem selecionar automaticamente uma organização.
+- `GET /api/v1/organizations/current/`: retorna o contexto revalidado; sem contexto,
+  retorna `404` com `{"detail": "Nenhuma organização selecionada."}`.
+- `PUT /api/v1/organizations/current/`: recebe `{"organization_id": <id>}` e exige
+  CSRF. Seleciona apenas mediante Membership ativa. Organização inexistente, alheia
+  ou vínculo inativo retornam o mesmo `403`, `{"detail": "Organização indisponível."}`.
+  Tentativas inválidas preservam a seleção anterior, desde que continue válida.
+- `DELETE /api/v1/organizations/current/`: exige CSRF, remove a seleção e retorna
+  `204`, sem encerrar a autenticação. É idempotente mesmo sem seleção anterior.
+
+O fluxo é login → listagem → seleção explícita → consulta → troca ou remoção.
+Logout limpa naturalmente a seleção junto com a sessão. Requests sem sessão
+recebem `403`. Os contratos também estão no OpenAPI, validado pelo comando acima.
+
+Isso valida apenas o contexto e o acesso à listagem/seleção de organizações:
+não adiciona RBAC, isolamento automático de models/querysets, header de tenant,
+cache, tokens ou módulos de negócio.
 
 ## Qualidade e testes
 

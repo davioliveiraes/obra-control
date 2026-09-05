@@ -6,7 +6,7 @@ def test_auth_schema_describes_session_csrf_and_identity_contracts():
     schema = SchemaGenerator().get_schema(request=None, public=True)
     validate_schema(schema)
     paths = schema["paths"]
-    assert set(paths) == {
+    assert {path for path in paths if path.startswith("/api/v1/auth/")} == {
         "/api/v1/auth/csrf/",
         "/api/v1/auth/login/",
         "/api/v1/auth/logout/",

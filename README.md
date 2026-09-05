@@ -1,8 +1,8 @@
 # ObraControl
 
 Fundação técnica do backend do ObraControl, um monólito modular em Django com
-API REST e PostgreSQL. Nesta etapa não existem apps nem funcionalidades de
-negócio.
+API REST e PostgreSQL. Inclui a fundação de identidade (`accounts.User`), sem
+funcionalidades de negócio nem endpoints de autenticação.
 
 ## Requisitos
 
@@ -70,10 +70,41 @@ docker compose up --build
 O backend fica disponível em `http://localhost:8000/`. O namespace reservado
 para a futura API é `/api/v1/`; ele ainda não possui endpoints.
 
-> Não execute migrations nesta fundação. O modelo de usuário customizado será
-> definido em uma etapa posterior, antes das primeiras migrations do projeto.
+## Identidade e migrations (Etapa 2)
+
+`accounts.User` é baseado em `AbstractUser`, com `username` removido e email
+obrigatório como `USERNAME_FIELD`. Mantém `BigAutoField`, senhas com hash e os
+campos/permissões nativos do Django, sem papéis empresariais.
+
+O manager e o `save()` removem espaços nas extremidades e convertem o email
+inteiro para minúsculas. A validação herdada (`clean()`) usa a mesma normalização.
+O campo tem `unique=True`, e a constraint `accounts_user_email_ci_unique` sobre
+`Lower(email)` impede duplicatas por casing também em escritas que contornam
+o `save()`. Operações em lote não normalizam os valores automaticamente.
+
+User representa a pessoa, sem vínculo direto com organização. Esse vínculo será
+definido futuramente via Membership; Organization e Membership ainda não existem.
+Não há API de usuários, autenticação HTTP implementada ou UserAdmin personalizado.
+
+Com as variáveis `POSTGRES_*` exportadas no processo (incluindo a porta **5433**
+do exemplo e a senha local escolhida), aplique as migrations explicitamente:
+
+```powershell
+& $Python backend\manage.py showmigrations
+& $Python backend\manage.py migrate
+```
+
+Em um banco legado que já tenha aplicado migrations com o User padrão, pare e
+avalie o histórico antes de migrar. Não apague banco/volume nem use migrations
+falsas para contornar incompatibilidades. Docker/Compose não executam migrations
+automaticamente.
 
 ## Qualidade e testes
+
+Os testes de identidade usam PostgreSQL e criam um banco de testes separado
+(`test_<POSTGRES_DB>`), removido pelo pytest-django ao terminar. Exporte as mesmas
+variáveis de conexão local antes de executar; o usuário do banco precisa de
+permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
 
 ```powershell
 & $Python -m ruff check backend

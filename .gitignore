@@ -1,0 +1,34 @@
+# Local environment and secrets
+.venv/
+.env
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.egg-info/
+.eggs/
+build/
+dist/
+
+# Django
+db.sqlite3
+staticfiles/
+media/
+
+# Tests and quality tools
+.pytest_cache/
+.ruff_cache/
+.coverage
+.coverage.*
+htmlcov/
+
+# Editors and operating systems
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+*Zone.Identifier
+
+# Codex
+resume_codex.txt

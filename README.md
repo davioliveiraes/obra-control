@@ -2,8 +2,8 @@
 
 Fundação técnica do backend do ObraControl, um monólito modular em Django com
 API REST e PostgreSQL. Inclui a fundação de identidade (`accounts.User`) e os
-vínculos entre usuários e organizações, sem módulos de negócio nem endpoints
-de autenticação.
+vínculos entre usuários e organizações, com autenticação web por sessão e CSRF.
+Ainda não há módulos de negócio ou isolamento multi-tenant automático.
 
 ## Requisitos
 
@@ -68,8 +68,8 @@ Ou execute o ambiente de desenvolvimento completo em containers:
 docker compose up --build
 ```
 
-O backend fica disponível em `http://localhost:8000/`. O namespace reservado
-para a futura API é `/api/v1/`; ele ainda não possui endpoints.
+O backend fica disponível em `http://localhost:8000/`. A API usa `/api/v1/`, com
+os endpoints de autenticação em `/api/v1/auth/`.
 
 ## Identidade e migrations (Etapa 2)
 
@@ -85,7 +85,8 @@ o `save()`. Operações em lote não normalizam os valores automaticamente.
 
 User representa a pessoa, sem vínculo direto com organização. O vínculo com
 empresas fica em Membership, conforme a fundação SaaS descrita abaixo.
-Não há API de usuários, autenticação HTTP implementada ou UserAdmin personalizado.
+Não há CRUD de usuários ou UserAdmin personalizado. A autenticação HTTP está
+descrita na Etapa 4 abaixo.
 
 Com as variáveis `POSTGRES_*` exportadas no processo (incluindo a porta **5433**
 do exemplo e a senha local escolhida), aplique as migrations explicitamente:
@@ -122,6 +123,50 @@ Criar uma organização não cria OWNER automaticamente. Não há tenant context
 isolamento automático, middleware multi-tenant, permission classes ou API de
 organizações/memberships. As migrations continuam sendo operações explícitas,
 usando os comandos documentados acima.
+
+## Autenticação web (Etapa 4)
+
+A API utiliza somente `SessionAuthentication` do DRF, com sessões e autenticação
+nativas do Django. Login usa `authenticate()` e `login()`; logout usa `logout()`.
+Email é normalizado com `strip()` e `lower()`; a senha não é aparada.
+
+O contrato HTTP dos quatro endpoints, payloads, respostas e requisitos de CSRF
+está nas anotações drf-spectacular junto às views. Para gerar e validar o OpenAPI
+(saída no terminal, sem adicionar endpoint de documentação):
+
+```powershell
+& $Python backend\manage.py spectacular --validate --fail-on-warn
+```
+
+Fluxo do cliente, preservando cookies entre requests:
+
+1. Obtenha o token em `GET /api/v1/auth/csrf/`. A resposta contém `csrfToken`
+   mascarado, e o middleware estabelece o cookie `csrftoken`.
+2. Envie email/senha para `POST /api/v1/auth/login/`, com esse token no header
+   `X-CSRFToken` e o cookie CSRF. Login exige CSRF mesmo quando anônimo.
+3. Preserve o cookie `sessionid` recebido. `GET /api/v1/auth/me/` passa a resolver
+   a identidade pela sessão, retornando só `id`, `email`, `first_name`, `last_name`.
+4. Após login, obtenha um novo token pelo endpoint CSRF (ou leia o cookie CSRF
+   atualizado), pois o Django rotaciona o token no login. O token anterior não
+   serve para as operações seguintes.
+5. Envie `POST /api/v1/auth/logout/` com sessão e CSRF atualizados. Após o logout,
+   `/me/` volta a negar acesso.
+
+Credenciais rejeitadas (incluindo usuário inativo) retornam `400` e a mesma
+mensagem genérica, sem distinguir email inexistente de senha incorreta.
+Sem autenticação, `/me/` e logout retornam `403`, conforme SessionAuthentication.
+Falhas CSRF retornam `403`; no login, a resposta nativa do Django é HTML.
+As respostas não permitem armazenamento em cache (`no-store`).
+
+`sessionid` é HttpOnly; os cookies de sessão e CSRF usam SameSite=Lax. Em produção
+ambos têm Secure=True e exigem HTTPS; em desenvolvimento/testes continuam
+compatíveis com HTTP local. O cookie CSRF segue o padrão legível do Django.
+Não há CORS adicional: a integração React e suas origens serão avaliadas quando
+existir uma topologia real; produção deve preferir mesma origem via proxy.
+
+Não há JWT, tokens de API, contexto de organização ou autorização por papéis
+empresariais. Esta etapa não implementa limitação de tentativas de login;
+proteção contra abuso deve ser definida antes de exposição pública em produção.
 
 ## Qualidade e testes
 

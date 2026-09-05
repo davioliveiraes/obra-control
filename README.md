@@ -3,8 +3,8 @@
 Fundação técnica do backend do ObraControl, um monólito modular em Django com
 API REST e PostgreSQL. Inclui a fundação de identidade (`accounts.User`) e os
 vínculos entre usuários e organizações, com autenticação web por sessão e CSRF.
-Customers é o primeiro módulo de negócio, com isolamento explícito por organização
-na API. Não há isolamento automático global de models/querysets.
+Customers e Projects (obras) possuem isolamento explícito por organização na API.
+Não há isolamento automático global de models/querysets.
 
 ## Requisitos
 
@@ -243,9 +243,57 @@ para superusuários Django, RBAC, TenantModel, TenantManager ou segundo módulo
 empresarial. O isolamento está nesta API; uso direto do ORM precisa continuar
 explicitamente filtrado pelo tenant. O schema OpenAPI documenta os contratos.
 
+## Obras por organização (Etapa 7)
+
+`projects.Project` representa uma obra e pertence obrigatoriamente a uma
+Organization (`CASCADE`, `organization.projects`). Mantém BigAutoField, nome
+obrigatório não único, descrição opcional, datas planejadas opcionais e timestamps.
+`ProjectStatus` possui somente `planning` (padrão), `active`, `completed` e `canceled`.
+Não há workflow ou transições automáticas.
+
+O cliente é opcional (`customer_id`, aceita `null`) e deve pertencer à mesma
+organização. Excluir Customer, inclusive pela API existente, mantém a obra com
+cliente nulo (`SET_NULL`, relação inversa `customer.projects`). A API resolve
+`customer_id` exclusivamente no queryset de Customers de `request.organization`.
+Cliente de outro tenant e ID inexistente retornam o mesmo `400` com
+`{"customer_id": ["Cliente indisponível."]}`. PATCH pode definir, trocar ou remover
+o cliente, mas não transferir a obra entre tenants.
+
+`Project.clean()` também verifica a coerência Customer × Organization em validações
+explícitas/forms. Isso não substitui o queryset tenant-aware da API nem cria uma
+garantia entre tabelas no banco: uso direto de `save()`, `update()` ou operações
+em lote precisa respeitar essa invariante; `save()` não chama `full_clean()`.
+
+A constraint PostgreSQL `projects_project_planned_dates_order` exige fim >= início
+quando ambas as datas existem, permitindo igualdade e qualquer combinação com
+datas nulas. O serializer retorna `400` em datas invertidas, inclusive ao combinar
+um PATCH parcial com a outra data persistida.
+
+Rotas: `GET/POST /api/v1/projects/` e `GET/PATCH/DELETE /api/v1/projects/{id}/`.
+HEAD/OPTIONS disponíveis, sem PUT. Exigem `IsAuthenticated` e
+`HasActiveOrganization`; escritas mantêm CSRF. Listagem, retrieve, PATCH e DELETE
+usam queryset filtrado por `request.organization`; IDs de outro tenant retornam
+`404`. Criação associa essa organização no backend. Campos extras `organization`,
+`organization_id`, `tenant` e `tenant_id` são ignorados e nunca escolhem o contexto.
+
+Somente `name` é obrigatório no POST. Campos públicos: `id`, `name`, `customer_id`,
+`status`, `description`, `planned_start_date`, `planned_end_date`, `created_at` e
+`updated_at`; identificador e timestamps são somente leitura. Organization não
+é exposta. O contrato detalhado está no OpenAPI gerado pelas views/serializer.
+
+Paginação exclusiva de Projects: 25 itens, `?page=2`, ordem `name, id`, sem tamanho
+arbitrário de página, filtros, busca ou ordenação dinâmica. Contratos de Customers
+e Organizations permanecem iguais. Revogação de Membership interrompe o acesso
+na próxima request; troca de organização altera consultas e criações seguintes.
+Não há bypass para superusuário nem diferenças de autorização entre roles.
+
+Aplique `projects.0001_initial` com o comando explícito `manage.py migrate`
+documentado acima. Não há EAP, planejamento detalhado, financeiro, RBAC, abstrações
+tenant genéricas ou novas dependências nesta etapa.
+
 ## Qualidade e testes
 
-Os testes de identidade, organizações e clientes usam PostgreSQL e um banco separado
+Os testes de identidade, organizações, clientes e obras usam PostgreSQL e banco separado
 (`test_<POSTGRES_DB>`), removido pelo pytest-django ao terminar. Exporte as mesmas
 variáveis de conexão local antes de executar; o usuário do banco precisa de
 permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
@@ -259,7 +307,9 @@ permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
 ```
 
 As factories mínimas ficam em `backend/tests/factories`: `UserFactory`,
-`OrganizationFactory`, `MembershipFactory` e `CustomerFactory`. CustomerFactory
+`OrganizationFactory`, `MembershipFactory`, `CustomerFactory` e `ProjectFactory`.
+ProjectFactory cria Organization e mantém Customer nulo por padrão; ao fornecer
+Customer nos testes, informe explicitamente a mesma Organization. CustomerFactory
 cria somente a organização necessária, sem usuários/memberships implícitos.
 UserFactory usa `create_user()` na
 persistência e `set_password()` no build; sem senha explícita, a senha é

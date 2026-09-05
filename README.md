@@ -3,7 +3,8 @@
 Fundação técnica do backend do ObraControl, um monólito modular em Django com
 API REST e PostgreSQL. Inclui a fundação de identidade (`accounts.User`) e os
 vínculos entre usuários e organizações, com autenticação web por sessão e CSRF.
-Ainda não há módulos de negócio ou isolamento multi-tenant automático.
+Customers é o primeiro módulo de negócio, com isolamento explícito por organização
+na API. Não há isolamento automático global de models/querysets.
 
 ## Requisitos
 
@@ -206,9 +207,45 @@ Isso valida apenas o contexto e o acesso à listagem/seleção de organizações
 não adiciona RBAC, isolamento automático de models/querysets, header de tenant,
 cache, tokens ou módulos de negócio.
 
+## Clientes por organização (Etapa 6)
+
+`customers.Customer` pertence obrigatoriamente a uma Organization (`CASCADE`,
+acessível por `organization.customers`). Possui `BigAutoField`, nome obrigatório,
+email e telefone opcionais e timestamps. Nomes e emails não são únicos.
+
+A API exige `IsAuthenticated` e `HasActiveOrganization`, que utiliza o contexto
+validado pelo middleware. Todas as consultas, inclusive GET/PATCH/DELETE por ID,
+filtram `Customer.objects` por `request.organization` antes de localizar o objeto.
+IDs de outro tenant retornam `404`, sem revelar sua existência. Sem contexto ativo,
+o acesso retorna `403`; revogar a Membership interrompe o acesso na request seguinte.
+
+Rotas disponíveis:
+
+- `GET /api/v1/customers/`: lista paginada em `{count, next, previous, results}`.
+- `POST /api/v1/customers/`: cria cliente e retorna `201`.
+- `GET /api/v1/customers/{id}/`: consulta um cliente.
+- `PATCH /api/v1/customers/{id}/`: atualização parcial.
+- `DELETE /api/v1/customers/{id}/`: exclusão real, retornando `204`.
+
+Payload de criação: `name`, `email` e `phone` (somente `name` é obrigatório).
+Nome vazio ou apenas espaços é rejeitado. A resposta contém `id`, `name`, `email`,
+`phone`, `created_at` e `updated_at`. Organization não é exposta nem gravável pelo
+serializer; chaves extras `organization`/`organization_id` são ignoradas, conforme
+o comportamento padrão do DRF. A criação sempre usa `request.organization` e o
+PATCH não permite transferir clientes. Escritas continuam exigindo CSRF.
+
+Paginação exclusiva de Customers: 25 itens por página, `?page=2`, ordem por
+`name, id`; `page_size` enviado pelo cliente não altera o limite. Organizations
+continua retornando a lista simples anterior. Não há busca, filtros ou PUT.
+
+OWNER, ADMIN e MEMBER ativos possuem o mesmo acesso nesta etapa. Não há bypass
+para superusuários Django, RBAC, TenantModel, TenantManager ou segundo módulo
+empresarial. O isolamento está nesta API; uso direto do ORM precisa continuar
+explicitamente filtrado pelo tenant. O schema OpenAPI documenta os contratos.
+
 ## Qualidade e testes
 
-Os testes de identidade e organizações usam PostgreSQL e criam um banco separado
+Os testes de identidade, organizações e clientes usam PostgreSQL e um banco separado
 (`test_<POSTGRES_DB>`), removido pelo pytest-django ao terminar. Exporte as mesmas
 variáveis de conexão local antes de executar; o usuário do banco precisa de
 permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
@@ -222,7 +259,9 @@ permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
 ```
 
 As factories mínimas ficam em `backend/tests/factories`: `UserFactory`,
-`OrganizationFactory` e `MembershipFactory`. UserFactory usa `create_user()` na
+`OrganizationFactory`, `MembershipFactory` e `CustomerFactory`. CustomerFactory
+cria somente a organização necessária, sem usuários/memberships implícitos.
+UserFactory usa `create_user()` na
 persistência e `set_password()` no build; sem senha explícita, a senha é
 inutilizável. Os comandos desabilitam somente o cache auxiliar do pytest para
 evitar o conflito local de permissões já identificado, sem desabilitar testes.

@@ -56,6 +56,7 @@ INSTALLED_APPS = [
     "django_filters",
     "drf_spectacular",
     "apps.accounts.apps.AccountsConfig",
+    "apps.organizations.apps.OrganizationsConfig",
 ]
 
 MIDDLEWARE = [

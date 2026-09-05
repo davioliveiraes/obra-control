@@ -1,8 +1,9 @@
 # ObraControl
 
 Fundação técnica do backend do ObraControl, um monólito modular em Django com
-API REST e PostgreSQL. Inclui a fundação de identidade (`accounts.User`), sem
-funcionalidades de negócio nem endpoints de autenticação.
+API REST e PostgreSQL. Inclui a fundação de identidade (`accounts.User`) e os
+vínculos entre usuários e organizações, sem módulos de negócio nem endpoints
+de autenticação.
 
 ## Requisitos
 
@@ -82,8 +83,8 @@ O campo tem `unique=True`, e a constraint `accounts_user_email_ci_unique` sobre
 `Lower(email)` impede duplicatas por casing também em escritas que contornam
 o `save()`. Operações em lote não normalizam os valores automaticamente.
 
-User representa a pessoa, sem vínculo direto com organização. Esse vínculo será
-definido futuramente via Membership; Organization e Membership ainda não existem.
+User representa a pessoa, sem vínculo direto com organização. O vínculo com
+empresas fica em Membership, conforme a fundação SaaS descrita abaixo.
 Não há API de usuários, autenticação HTTP implementada ou UserAdmin personalizado.
 
 Com as variáveis `POSTGRES_*` exportadas no processo (incluindo a porta **5433**
@@ -99,9 +100,32 @@ avalie o histórico antes de migrar. Não apague banco/volume nem use migrations
 falsas para contornar incompatibilidades. Docker/Compose não executam migrations
 automaticamente.
 
+## Organizações e vínculos (Etapa 3)
+
+`organizations.Organization` representa a empresa/tenant no modelo Shared
+Database / Shared Schema. Possui apenas identificador `BigAutoField`, `name`
+(obrigatório na validação do model, não único), `created_at` e `updated_at`.
+
+`organizations.Membership` associa User e Organization: uma pessoa pode participar
+de várias empresas, e cada empresa pode possuir vários usuários. Os vínculos são
+consultados por `user.memberships` e `organization.memberships`; User continua
+sem `organization_id` e sem role empresarial.
+
+O papel pertence à Membership: `owner`, `admin` ou `member` (padrão), acompanhado
+de `is_active=True` e timestamps. Os papéis são apenas dados nesta etapa, sem
+regras de autorização, e não alteram `is_staff` ou `is_superuser` do Django.
+A constraint PostgreSQL `organizations_membership_org_user_unique` garante um
+único vínculo por organização/usuário, inclusive quando ele está inativo.
+Excluir qualquer uma das entidades remove suas memberships por `CASCADE`.
+
+Criar uma organização não cria OWNER automaticamente. Não há tenant context,
+isolamento automático, middleware multi-tenant, permission classes ou API de
+organizações/memberships. As migrations continuam sendo operações explícitas,
+usando os comandos documentados acima.
+
 ## Qualidade e testes
 
-Os testes de identidade usam PostgreSQL e criam um banco de testes separado
+Os testes de identidade e organizações usam PostgreSQL e criam um banco separado
 (`test_<POSTGRES_DB>`), removido pelo pytest-django ao terminar. Exporte as mesmas
 variáveis de conexão local antes de executar; o usuário do banco precisa de
 permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
@@ -109,10 +133,16 @@ permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
 ```powershell
 & $Python -m ruff check backend
 & $Python -m ruff format --check backend
-& $Python -m pytest
-& $Python -m coverage run -m pytest
+& $Python -m pytest -p no:cacheprovider
+& $Python -m coverage run -m pytest -p no:cacheprovider
 & $Python -m coverage report -m
 ```
+
+As factories mínimas ficam em `backend/tests/factories`: `UserFactory`,
+`OrganizationFactory` e `MembershipFactory`. UserFactory usa `create_user()` na
+persistência e `set_password()` no build; sem senha explícita, a senha é
+inutilizável. Os comandos desabilitam somente o cache auxiliar do pytest para
+evitar o conflito local de permissões já identificado, sem desabilitar testes.
 
 Instale e execute os hooks do Git:
 

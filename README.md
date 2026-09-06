@@ -323,6 +323,51 @@ OWNER/ADMIN explicitamente; MembershipFactory mantém MEMBER como default.
 Não há migrations novas, gestão de membros, convites, roles adicionais, EAP ou
 dependências novas nesta etapa.
 
+## EAP / etapas da obra (Etapa 9)
+
+`projects.ProjectStage` é uma adjacency list: cada item pertence obrigatoriamente
+a um Project (`project.stages`) e pode ter um parent do mesmo Project
+(`stage.children`). Organization não é duplicada: o tenant vem de Project.
+Campos: BigAutoField, project, parent opcional, name obrigatório (255, não único),
+description opcional, position inteiro não negativo (default 0) e timestamps.
+Position pode se repetir; a ordenação determinística é `position, id`.
+
+Rotas: `GET/POST /api/v1/projects/{project_id}/stages/` e
+`GET/PATCH/DELETE /api/v1/projects/{project_id}/stages/{id}/`. HEAD/OPTIONS
+disponíveis; PUT não implementado. A listagem é plana e completa, sem paginação
+ou children recursivos. Não altera as paginações de Customers/Projects.
+
+Primeiro a API resolve Project filtrado por `request.organization`; em seguida,
+resolve a etapa dentro desse Project. Project de outro tenant ou etapa de outro
+Project na rota retorna `404`. Project é definido apenas pela URL; chaves extras
+`project`, `project_id`, `organization` e `organization_id` no payload são ignoradas.
+Somente `name`, `description`, `position` e `parent_id` são graváveis.
+
+`parent_id` aceita null para criar/desvincular uma raiz. IDs inexistentes, de outra
+obra (inclusive no mesmo tenant) ou de outro tenant recebem o mesmo `400`:
+`{"parent_id": ["Etapa pai indisponível."]}`. ProjectStage.clean() verifica o mesmo
+Project, self-parent e ciclos percorrendo ancestrais; o serializer invoca essa
+validação explicitamente. Não há override de save()/full_clean() automático.
+A constraint `projects_projectstage_not_self_parent` bloqueia self-parent no banco.
+
+POST/PATCH/DELETE de etapas usam transação e bloqueiam a linha do Project antes de
+validar/gravar. Isso serializa escritas da EAP de uma obra para impedir ciclos
+formados por reparentamentos concorrentes. Leituras não bloqueiam a obra. Uso direto
+do ORM/admin/scripts precisa respeitar a validação e o mesmo protocolo de escrita;
+não há trigger nem constraint de banco para ciclos gerais ou parent × Project.
+
+Parent usa RESTRICT: excluir uma etapa com filhos retorna `409`,
+`{"detail": "A etapa possui subetapas e não pode ser excluída."}`, sem remover a
+subárvore. Uma leaf pode ser excluída (`204`). Excluir o Project inteiro continua
+removendo toda a EAP por CASCADE; validado também via endpoint existente.
+
+São reutilizadas IsAuthenticated, HasActiveOrganization e
+IsOrganizationAdminOrReadOnly: MEMBER read-only, OWNER/ADMIN com escrita e CSRF,
+sem bypass para superusuário. A revogação de Membership continua valendo na request
+seguinte. A migration é `projects.0002_projectstage`; aplicação explícita conforme
+comando documentado acima. Não há códigos EAP, reorder/move, status de etapa,
+cronograma, progresso, custos, orçamento ou novas dependências.
+
 ## Qualidade e testes
 
 Os testes de identidade, organizações, clientes e obras usam PostgreSQL e banco separado
@@ -339,7 +384,9 @@ permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
 ```
 
 As factories mínimas ficam em `backend/tests/factories`: `UserFactory`,
-`OrganizationFactory`, `MembershipFactory`, `CustomerFactory` e `ProjectFactory`.
+`OrganizationFactory`, `MembershipFactory`, `CustomerFactory`, `ProjectFactory`
+e `ProjectStageFactory`. ProjectStageFactory cria Project e mantém parent nulo;
+ao fornecer parent, informe explicitamente o mesmo Project, sem correção implícita.
 ProjectFactory cria Organization e mantém Customer nulo por padrão; ao fornecer
 Customer nos testes, informe explicitamente a mesma Organization. CustomerFactory
 cria somente a organização necessária, sem usuários/memberships implícitos.

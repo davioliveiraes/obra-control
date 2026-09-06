@@ -10,7 +10,10 @@ from drf_spectacular.utils import (
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 
-from apps.organizations.permissions import HasActiveOrganization
+from apps.organizations.permissions import (
+    HasActiveOrganization,
+    IsOrganizationAdminOrReadOnly,
+)
 
 from ..models import Customer
 from .pagination import CustomerPagination
@@ -25,7 +28,9 @@ csrf_header = OpenApiParameter(
 )
 forbidden_response = OpenApiResponse(
     response=OpenApiTypes.OBJECT,
-    description="Sessão ausente/inválida, contexto organizacional ausente ou falha CSRF.",
+    description=(
+        "Sessão/contexto ausente ou inválido, falha CSRF ou escrita sem role OWNER/ADMIN."
+    ),
 )
 not_found_response = OpenApiResponse(
     response=OpenApiTypes.OBJECT,
@@ -43,7 +48,7 @@ invalid_response = OpenApiResponse(
     list=extend_schema(
         description=(
             "Lista somente clientes da organização ativa. Paginação fixa de 25 itens, "
-            "ordenados por name e id. Exige sessão e Membership ativa; sem distinção de roles."
+            "ordenados por name e id. Leitura disponível para qualquer Membership ativa."
         ),
         responses={200: CustomerSerializer(many=True), 403: forbidden_response},
     ),
@@ -51,7 +56,7 @@ invalid_response = OpenApiResponse(
         description=(
             "Cria cliente na organização validada da request, nunca em tenant do payload. "
             "Campos organization/organization_id não pertencem ao contrato e são ignorados. "
-            "Exige contexto ativo e CSRF."
+            "Exige contexto ativo, role OWNER ou ADMIN e CSRF."
         ),
         parameters=[csrf_header],
         request=CustomerSerializer,
@@ -72,7 +77,7 @@ invalid_response = OpenApiResponse(
     partial_update=extend_schema(
         description=(
             "Atualiza parcialmente cliente da organização ativa. Não permite transferir "
-            "o cliente entre organizações. Exige CSRF."
+            "o cliente entre organizações. Exige role OWNER ou ADMIN e CSRF."
         ),
         parameters=[csrf_header],
         request=CustomerSerializer,
@@ -84,7 +89,10 @@ invalid_response = OpenApiResponse(
         },
     ),
     destroy=extend_schema(
-        description="Exclui definitivamente cliente da organização ativa. Exige CSRF.",
+        description=(
+            "Exclui definitivamente cliente da organização ativa. "
+            "Exige role OWNER ou ADMIN e CSRF."
+        ),
         parameters=[csrf_header],
         responses={
             204: OpenApiResponse(
@@ -97,7 +105,11 @@ invalid_response = OpenApiResponse(
 )
 class CustomerViewSet(ModelViewSet):
     serializer_class = CustomerSerializer
-    permission_classes = [IsAuthenticated, HasActiveOrganization]
+    permission_classes = [
+        IsAuthenticated,
+        HasActiveOrganization,
+        IsOrganizationAdminOrReadOnly,
+    ]
     pagination_class = CustomerPagination
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     filter_backends = []

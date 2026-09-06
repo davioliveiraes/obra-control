@@ -310,7 +310,7 @@ def test_tenant_switch_changes_list_and_create_customer_scope(
     first = ProjectFactory(
         organization=membership.organization, customer=first_customer
     )
-    other = MembershipFactory(user=user)
+    other = MembershipFactory(user=user, role=MembershipRole.OWNER)
     second_customer = CustomerFactory(organization=other.organization)
     second = ProjectFactory(organization=other.organization)
     assert [p["id"] for p in tenant_client.get(LIST_URL).json()["results"]] == [
@@ -378,13 +378,14 @@ def test_superuser_has_no_bypass(
     assert authenticated_client.get(detail_url(foreign_project)).status_code == 404
 
 
-@pytest.mark.parametrize("role", MembershipRole.values)
-def test_active_roles_have_same_crud_access(tenant_client, membership, role):
+@pytest.mark.parametrize("role", [MembershipRole.OWNER, MembershipRole.ADMIN])
+def test_owner_and_admin_have_crud_access(tenant_client, membership, role):
     membership.role = role
     membership.save(update_fields=["role"])
     response = tenant_client.post(LIST_URL, {"name": "Obra"}, format="json")
     assert response.status_code == 201
     url = f"{LIST_URL}{response.json()['id']}/"
+    assert tenant_client.get(LIST_URL).status_code == 200
     assert tenant_client.get(url).status_code == 200
     for status in ProjectStatus.values:
         assert (

@@ -4,7 +4,8 @@ Fundação técnica do backend do ObraControl, um monólito modular em Django co
 API REST e PostgreSQL. Inclui a fundação de identidade (`accounts.User`) e os
 vínculos entre usuários e organizações, com autenticação web por sessão e CSRF.
 Customers e Projects (obras) possuem isolamento explícito por organização na API.
-Não há isolamento automático global de models/querysets.
+Possuem também RBAC mínimo por Membership. Não há isolamento automático global
+de models/querysets.
 
 ## Requisitos
 
@@ -114,14 +115,14 @@ consultados por `user.memberships` e `organization.memberships`; User continua
 sem `organization_id` e sem role empresarial.
 
 O papel pertence à Membership: `owner`, `admin` ou `member` (padrão), acompanhado
-de `is_active=True` e timestamps. Os papéis são apenas dados nesta etapa, sem
-regras de autorização, e não alteram `is_staff` ou `is_superuser` do Django.
+de `is_active=True` e timestamps. Os papéis não alteram `is_staff` ou `is_superuser`
+do Django; sua autorização em Customers/Projects está descrita na Etapa 8 abaixo.
 A constraint PostgreSQL `organizations_membership_org_user_unique` garante um
 único vínculo por organização/usuário, inclusive quando ele está inativo.
 Excluir qualquer uma das entidades remove suas memberships por `CASCADE`.
 
 Criar uma organização não cria OWNER automaticamente. Não há CRUD HTTP de
-organizações/memberships, RBAC ou isolamento automático de querysets. O contexto
+organizações/memberships ou isolamento automático de querysets. O contexto
 de sessão está descrito na Etapa 5 abaixo. As migrations continuam sendo operações
 explícitas, usando os comandos documentados acima.
 
@@ -165,8 +166,8 @@ compatíveis com HTTP local. O cookie CSRF segue o padrão legível do Django.
 Não há CORS adicional: a integração React e suas origens serão avaliadas quando
 existir uma topologia real; produção deve preferir mesma origem via proxy.
 
-Não há JWT, tokens de API ou autorização por papéis empresariais. Login não
-seleciona organização automaticamente. Não há limitação de tentativas de login;
+Não há JWT ou tokens de API. Login não aplica roles empresariais nem seleciona
+organização automaticamente. Não há limitação de tentativas de login;
 proteção contra abuso deve ser definida antes de exposição pública em produção.
 
 ## Organização ativa na sessão (Etapa 5)
@@ -238,9 +239,9 @@ Paginação exclusiva de Customers: 25 itens por página, `?page=2`, ordem por
 `name, id`; `page_size` enviado pelo cliente não altera o limite. Organizations
 continua retornando a lista simples anterior. Não há busca, filtros ou PUT.
 
-OWNER, ADMIN e MEMBER ativos possuem o mesmo acesso nesta etapa. Não há bypass
-para superusuários Django, RBAC, TenantModel, TenantManager ou segundo módulo
-empresarial. O isolamento está nesta API; uso direto do ORM precisa continuar
+Desde a Etapa 8, MEMBER possui somente leitura; OWNER/ADMIN podem escrever.
+Não há bypass para superusuários Django, TenantModel ou TenantManager.
+O isolamento está nesta API; uso direto do ORM precisa continuar
 explicitamente filtrado pelo tenant. O schema OpenAPI documenta os contratos.
 
 ## Obras por organização (Etapa 7)
@@ -285,11 +286,42 @@ Paginação exclusiva de Projects: 25 itens, `?page=2`, ordem `name, id`, sem ta
 arbitrário de página, filtros, busca ou ordenação dinâmica. Contratos de Customers
 e Organizations permanecem iguais. Revogação de Membership interrompe o acesso
 na próxima request; troca de organização altera consultas e criações seguintes.
-Não há bypass para superusuário nem diferenças de autorização entre roles.
+Não há bypass para superusuário. A política de roles da Etapa 8 também se aplica.
 
 Aplique `projects.0001_initial` com o comando explícito `manage.py migrate`
-documentado acima. Não há EAP, planejamento detalhado, financeiro, RBAC, abstrações
+documentado acima. Não há EAP, planejamento detalhado, financeiro, abstrações
 tenant genéricas ou novas dependências nesta etapa.
+
+## Autorização por Membership (Etapa 8)
+
+Customers e Projects exigem cumulativamente `IsAuthenticated`,
+`HasActiveOrganization` e `IsOrganizationAdminOrReadOnly`:
+
+- OWNER/ADMIN: leitura e escrita (POST, PATCH e DELETE).
+- MEMBER: somente leitura (GET, HEAD e OPTIONS).
+
+PUT continua sem implementação. A nova permission usa `SAFE_METHODS` do DRF e
+`request.membership` já validada pelo middleware, sem consultas adicionais.
+O role continua na Membership, nunca no User ou na sessão. Alterar ADMIN para
+MEMBER revoga escrita na próxima request, sem novo login; trocar Organization
+troca também o role efetivo. Membership desativada continua invalidando contexto.
+Não há bypass por `is_staff`/`is_superuser` nem uso de Django Groups/`has_perm()`.
+
+MEMBER tentando escrever, mesmo com CSRF válido, recebe `403` com
+`{"detail": "Seu papel na organização não permite esta operação."}`. Nenhum dado é
+criado, alterado ou excluído. A verificação de role ocorre antes de buscar o objeto:
+em escrita por MEMBER, IDs próprios, alheios e inexistentes recebem o mesmo `403`.
+
+O queryset tenant-scoped permanece independente do RBAC: em leitura, recurso de
+outro tenant retorna `404` para qualquer role; em PATCH/DELETE por OWNER/ADMIN,
+também retorna `404`. Role elevado nunca oferece acesso global. Payloads, URLs,
+paginação, SessionAuthentication e CSRF permanecem inalterados.
+
+Os testes específicos ficam em `backend/tests/organizations/test_rbac.py` e
+exercitam as duas APIs com sessões/CSRF reais. Testes de escrita legítima declaram
+OWNER/ADMIN explicitamente; MembershipFactory mantém MEMBER como default.
+Não há migrations novas, gestão de membros, convites, roles adicionais, EAP ou
+dependências novas nesta etapa.
 
 ## Qualidade e testes
 

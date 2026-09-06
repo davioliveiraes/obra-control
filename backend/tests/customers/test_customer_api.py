@@ -245,7 +245,7 @@ def test_switching_organization_changes_all_customer_access(
     tenant_client, user, membership
 ):
     first = CustomerFactory(organization=membership.organization)
-    second_membership = MembershipFactory(user=user)
+    second_membership = MembershipFactory(user=user, role=MembershipRole.OWNER)
     second = CustomerFactory(organization=second_membership.organization)
     assert tenant_client.get(LIST_URL).json()["results"][0]["id"] == first.pk
 
@@ -307,15 +307,14 @@ def test_superuser_has_no_context_or_cross_tenant_bypass(
     assert authenticated_client.get(detail_url(foreign_customer)).status_code == 404
 
 
-@pytest.mark.parametrize("role", MembershipRole.values)
-def test_all_active_membership_roles_can_use_customer_crud(
-    tenant_client, membership, role
-):
+@pytest.mark.parametrize("role", [MembershipRole.OWNER, MembershipRole.ADMIN])
+def test_owner_and_admin_can_use_customer_crud(tenant_client, membership, role):
     membership.role = role
     membership.save(update_fields=["role"])
     created = tenant_client.post(LIST_URL, {"name": "Cliente"}, format="json")
     assert created.status_code == 201
     url = f"{LIST_URL}{created.json()['id']}/"
+    assert tenant_client.get(LIST_URL).status_code == 200
     assert tenant_client.get(url).status_code == 200
     assert (
         tenant_client.patch(url, {"name": "Alterado"}, format="json").status_code == 200

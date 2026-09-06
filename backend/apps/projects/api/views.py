@@ -10,7 +10,10 @@ from drf_spectacular.utils import (
 from rest_framework.permissions import IsAuthenticated
 from rest_framework.viewsets import ModelViewSet
 
-from apps.organizations.permissions import HasActiveOrganization
+from apps.organizations.permissions import (
+    HasActiveOrganization,
+    IsOrganizationAdminOrReadOnly,
+)
 
 from ..models import Project
 from .pagination import ProjectPagination
@@ -25,7 +28,9 @@ csrf_header = OpenApiParameter(
 )
 forbidden_response = OpenApiResponse(
     response=OpenApiTypes.OBJECT,
-    description="Sessão/contexto organizacional ausente ou inválido, ou falha CSRF.",
+    description=(
+        "Sessão/contexto ausente ou inválido, falha CSRF ou escrita sem role OWNER/ADMIN."
+    ),
 )
 not_found_response = OpenApiResponse(
     response=OpenApiTypes.OBJECT,
@@ -46,7 +51,7 @@ invalid_response = OpenApiResponse(
     list=extend_schema(
         description=(
             "Lista apenas obras da organização ativa. Páginas fixas de 25 itens, "
-            "ordenados por name e id; sem filtros ou autorização por role."
+            "ordenados por name e id, sem filtros. Leitura para qualquer Membership ativa."
         ),
         responses={200: ProjectSerializer(many=True), 403: forbidden_response},
     ),
@@ -55,7 +60,7 @@ invalid_response = OpenApiResponse(
             "Cria obra na organização validada da request. Apenas name é obrigatório. "
             "customer_id é opcional e restrito ao mesmo tenant. Datas podem ser nulas; "
             "quando ambas existem, fim >= início. Organization/tenant do payload são "
-            "ignorados. Exige sessão, contexto ativo e CSRF."
+            "ignorados. Exige sessão, contexto ativo, role OWNER ou ADMIN e CSRF."
         ),
         request=ProjectSerializer,
         parameters=[csrf_header],
@@ -77,7 +82,7 @@ invalid_response = OpenApiResponse(
         description=(
             "Atualiza obra do tenant ativo, sem transferi-la. customer_id aceita cliente "
             "do mesmo tenant ou null. Datas são validadas junto aos valores persistidos "
-            "quando o PATCH omite um dos campos. Exige CSRF."
+            "quando o PATCH omite um dos campos. Exige role OWNER ou ADMIN e CSRF."
         ),
         request=ProjectSerializer,
         parameters=[csrf_header],
@@ -89,7 +94,10 @@ invalid_response = OpenApiResponse(
         },
     ),
     destroy=extend_schema(
-        description="Exclui definitivamente obra da organização ativa. Exige CSRF.",
+        description=(
+            "Exclui definitivamente obra da organização ativa. "
+            "Exige role OWNER ou ADMIN e CSRF."
+        ),
         parameters=[csrf_header],
         responses={
             204: OpenApiResponse(description="Obra excluída; sem corpo de resposta."),
@@ -100,7 +108,11 @@ invalid_response = OpenApiResponse(
 )
 class ProjectViewSet(ModelViewSet):
     serializer_class = ProjectSerializer
-    permission_classes = [IsAuthenticated, HasActiveOrganization]
+    permission_classes = [
+        IsAuthenticated,
+        HasActiveOrganization,
+        IsOrganizationAdminOrReadOnly,
+    ]
     pagination_class = ProjectPagination
     http_method_names = ["get", "post", "patch", "delete", "head", "options"]
     filter_backends = []

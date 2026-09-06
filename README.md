@@ -368,6 +368,54 @@ seguinte. A migration é `projects.0002_projectstage`; aplicação explícita co
 comando documentado acima. Não há códigos EAP, reorder/move, status de etapa,
 cronograma, progresso, custos, orçamento ou novas dependências.
 
+## Planejamento temporal da EAP (Etapa 10)
+
+`planning.StagePlan` separa as datas planejadas da estrutura da EAP. Possui apenas
+BigAutoField, `stage` (OneToOne para ProjectStage, `related_name="plan"`),
+`planned_start_date`, `planned_end_date` e timestamps. Project e Organization não
+são duplicados: todo contexto deriva de Stage → Project → Organization.
+Uma etapa ainda não planejada simplesmente não possui StagePlan.
+
+As duas datas são obrigatórias. A constraint PostgreSQL
+`planning_stageplan_planned_dates_order` exige fim >= início, permitindo o mesmo
+dia. A API valida também PATCH parcial contra a outra data persistida e retorna
+`400` sem alterar o registro. Não há restrições contra as datas globais do Project
+ou de parents/children, nem propagação automática de datas.
+
+Rotas: `GET/POST /api/v1/projects/{project_id}/planning/` e
+`GET/PATCH/DELETE /api/v1/projects/{project_id}/planning/{id}/`. HEAD/OPTIONS
+disponíveis, sem PUT. A lista é plana, completa, sem paginação, filtros ou busca,
+ordenada por `stage__position, stage_id`. A paginação de outras APIs não muda.
+
+Project é resolvido exclusivamente no tenant ativo; planos são filtrados por
+`stage__project=project`. IDs de Project externos e planos fora do Project da URL
+retornam `404`. POST exige stage_id e ambas as datas; a etapa precisa pertencer ao
+Project da URL. Stage inexistente, de outra obra ou tenant recebe o mesmo `400`:
+`{"stage_id": ["Etapa indisponível."]}`.
+
+Na representação aparecem somente id, stage_id, datas e timestamps. No PATCH,
+stage_id é somente leitura: enviá-lo não move o plano. Campos extras stage,
+project/project_id e organization/organization_id são ignorados, como nas APIs
+anteriores. Somente datas são alteráveis após a criação; não há mass assignment
+de tenant ou mudança de etapa por PATCH.
+
+A OneToOne garante unicidade no PostgreSQL, sem constraint redundante. POST
+duplicado retorna `400`, `{"stage_id": ["A etapa já possui planejamento."]}`.
+Se duas criações passarem pela validação simultaneamente, o INSERT é protegido
+por uma transação curta; após rollback, a violação UNIQUE esperada é convertida
+para a mesma resposta. Não há locking adicional ou infraestrutura de concorrência.
+
+Excluir StagePlan preserva ProjectStage. Excluir uma leaf pela API da EAP remove
+seu planejamento por CASCADE; excluir Project remove toda a EAP e seus planos.
+Etapas com filhos continuam protegidas pelo contrato de exclusão da Etapa 9.
+IsAuthenticated, HasActiveOrganization e IsOrganizationAdminOrReadOnly continuam
+reutilizadas: MEMBER read-only; OWNER/ADMIN com escrita, exigindo CSRF. Sem bypass
+de superuser; revogação de Membership invalida acesso na próxima request.
+
+Migration: `planning.0001_initial`, aplicada explicitamente por `manage.py migrate`
+conforme documentado acima. Não há progresso/datas reais, dependências entre etapas,
+duração armazenada, Gantt engine, custos, orçamento ou novas dependências.
+
 ## Qualidade e testes
 
 Os testes de identidade, organizações, clientes e obras usam PostgreSQL e banco separado
@@ -384,8 +432,10 @@ permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
 ```
 
 As factories mínimas ficam em `backend/tests/factories`: `UserFactory`,
-`OrganizationFactory`, `MembershipFactory`, `CustomerFactory`, `ProjectFactory`
-e `ProjectStageFactory`. ProjectStageFactory cria Project e mantém parent nulo;
+`OrganizationFactory`, `MembershipFactory`, `CustomerFactory`, `ProjectFactory`,
+`ProjectStageFactory` e `StagePlanFactory`. StagePlanFactory cria somente sua Stage
+(Project/Organization derivam dela) e usa datas determinísticas válidas.
+ProjectStageFactory cria Project e mantém parent nulo;
 ao fornecer parent, informe explicitamente o mesmo Project, sem correção implícita.
 ProjectFactory cria Organization e mantém Customer nulo por padrão; ao fornecer
 Customer nos testes, informe explicitamente a mesma Organization. CustomerFactory

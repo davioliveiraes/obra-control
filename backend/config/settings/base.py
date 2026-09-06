@@ -59,6 +59,7 @@ INSTALLED_APPS = [
     "apps.organizations.apps.OrganizationsConfig",
     "apps.customers.apps.CustomersConfig",
     "apps.projects.apps.ProjectsConfig",
+    "apps.planning.apps.PlanningConfig",
 ]
 
 MIDDLEWARE = [

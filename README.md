@@ -526,6 +526,53 @@ Não há receitas, contas a pagar/receber, fluxo de caixa, fornecedores, categor
 pagamentos, anexos, auditoria completa, previsto × realizado agregado ou novas
 dependências. Cancelamento não substitui uma futura trilha de auditoria.
 
+## Resumo de custos previsto × realizado (Etapa 13)
+
+`GET /api/v1/projects/{project_id}/cost-summary/` fornece uma visão somente leitura
+do estado acumulado da obra. HEAD/OPTIONS seguem o DRF; não há POST/PATCH/PUT/DELETE,
+paginação, filtros temporais ou endpoint global por organização. Os endereços
+anteriores de Expenses permanecem inalterados.
+
+A view resolve Project filtrado por request.organization antes de chamar
+`finances.services.cost_summary.get_project_cost_summary(project)`. O service
+recebe a obra já autorizada, não conhece request/session nem resolve tenant e
+retorna somente um dictionary com Decimal. São reutilizadas IsAuthenticated,
+HasActiveOrganization e IsOrganizationAdminOrReadOnly: OWNER/ADMIN/MEMBER podem
+consultar. Project externo/inexistente retorna 404; sem contexto/Membership ativa,
+403. Superuser não tem bypass. GET não exige CSRF e as proteções de escrita das
+outras APIs não mudam. Não há cache de resultado; respostas usam no-store.
+
+Resposta: project_id, budget_total, actual_total, variance_amount,
+unallocated_actual_total e stages. Os campos monetários são strings decimais
+com exatamente duas casas, inclusive `0.00` em ausência de dados:
+
+- budget_total soma todos os BudgetItems do Project, quantizando **cada item**
+  (`quantity × unit_price`) com ROUND_HALF_UP antes de somar. Isso coincide com a
+  representação da API BudgetItem; a property do model continua sendo o produto
+  exato, sem mudança. Dois itens de `0.0050 × 1.00` resultam em `0.02`, não `0.01`.
+- actual_total soma todas as Expenses ACTIVE do Project, inclusive sem Stage.
+  CANCELED fica fora do realizado, com ou sem Stage.
+- variance_amount = budget_total - actual_total; negativo indica realizado acima
+  do previsto. Não representa lucro, margem ou fluxo de caixa.
+- unallocated_actual_total soma somente Expenses ACTIVE com Stage nula. Elas
+  entram no total da obra, mas não em linhas de Stage.
+- stages é uma lista plana com stage_id e os três totais diretos: budget_total,
+  actual_total e variance_amount. Inclui toda Stage do Project, mesmo sem dados,
+  em ordem position, id. Filhos não são somados automaticamente aos pais;
+  não há roll-up, recursão ou duplicação da EAP na resposta.
+
+Os totais gerais são acumulados diretamente das fontes, não pela soma das linhas
+de Stage. São três SELECTs no service: Stages, BudgetItems e Expenses ACTIVE,
+com consolidação em memória por dictionaries. O número não cresce com a quantidade
+de etapas; autenticação e resolução do Project ficam fora desse limite do service.
+Usa somente Decimal, com contexto local ampliado para somas de múltiplos valores
+máximos sem perda de centavos, sem alterar a precisão global do Python.
+
+Nada é persistido ou modificado: sem novos models, migrations, factories de resumo,
+signals, dependências, Revenue, percentuais, dashboard ou gráficos. StagePlan não
+participa dos cálculos. BudgetItem e Expense continuam independentes e fontes da
+verdade; cada consulta recalcula o resumo a partir dos registros atuais.
+
 ## Qualidade e testes
 
 Os testes de identidade, organizações, clientes e obras usam PostgreSQL e banco separado

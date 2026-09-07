@@ -416,6 +416,57 @@ Migration: `planning.0001_initial`, aplicada explicitamente por `manage.py migra
 conforme documentado acima. Não há progresso/datas reais, dependências entre etapas,
 duração armazenada, Gantt engine, custos, orçamento ou novas dependências.
 
+## Itens orçamentários previstos (Etapa 11)
+
+`budgets.BudgetItem` pertence obrigatoriamente a ProjectStage (`CASCADE`,
+`stage.budget_items`). A etapa pode possuir vários itens, inclusive com descrições
+iguais. Campos persistidos: BigAutoField, stage, description (255), unit (20),
+quantity, unit_price e timestamps. Description/unit são obrigatórios, sem strings
+vazias ou apenas espaços na API. Unit é texto livre, sem enum ou tabela auxiliar.
+Não há Project, Organization ou total duplicados no model.
+
+Quantity usa DecimalField(14, 4), deve ser > 0 e aceita desde `0.0001` até
+`9999999999.9999`. Unit price usa DecimalField(14, 2), deve ser >= 0 e aceita até
+`999999999999.99`, inclusive preço zero. As constraints PostgreSQL
+`budgets_budgetitem_quantity_positive` e `budgets_budgetitem_unit_price_nonnegative`
+protegem as regras também em save/update sem full_clean. A API valida limites,
+precisão e valores finitos antes de gravar; NaN/Infinity e excesso de casas são
+rejeitados com `400`, não arredondados silenciosamente na entrada.
+
+Total é uma property calculada com Decimal: `quantity * unit_price`. Não há coluna
+total, float ou total geral persistido. Na API, quantidade, preço e total são
+strings decimais com 4/2/2 casas respectivamente. Envie também strings no JSON
+para preservar precisão no cliente. Total é read-only e usa ROUND_HALF_UP: por
+exemplo, `0.3333 × 3.00 → 1.00` e `1.0050 × 1.00 → 1.01`. A representação permite
+22 dígitos inteiros mais 2 decimais, comportando o produto dos limites dos campos.
+
+Rotas: `GET/POST /api/v1/projects/{project_id}/budget/items/` e
+`GET/PATCH/DELETE /api/v1/projects/{project_id}/budget/items/{id}/`.
+HEAD/OPTIONS disponíveis; sem PUT, summary, filtros ou busca. Lista plana e
+completa, sem paginação, ordenada por `stage_id, id`. Outras paginações não mudam.
+
+Project é resolvido pelo tenant ativo; o queryset usa `stage__project=project`.
+Project externo ou item fora do Project da URL retorna `404`. POST exige stage_id,
+description, unit, quantity e unit_price. Stage é resolvida somente no Project da
+URL; ID inexistente, de outro Project ou tenant recebe o mesmo `400`:
+`{"stage_id": ["Etapa indisponível."]}`. PATCH pode mudar todos esses cinco campos,
+inclusive mover o item entre etapas da mesma obra; Stage omitida é preservada.
+Campos extras stage/project/project_id/organization/organization_id são ignorados;
+total enviado também é ignorado e sempre recalculado. Nada pode transferir tenant.
+
+São reutilizadas IsAuthenticated, HasActiveOrganization e
+IsOrganizationAdminOrReadOnly: MEMBER read-only; OWNER/ADMIN com escrita e CSRF.
+Superuser não possui bypass. Membership revogada invalida acesso na próxima request.
+Excluir BudgetItem preserva Stage e StagePlan; excluir leaf Stage remove seus itens;
+excluir Project remove a EAP e os itens dependentes. Parent com children continua
+protegido pelo contrato 409 da EAP. Planning e BudgetItem não alteram um ao outro:
+sem signals, sincronização de datas ou distribuição financeira automática.
+
+Migration: `budgets.0001_initial`, aplicada explicitamente com `manage.py migrate`.
+Não há Budget/Header, versões, composições, insumos, SINAPI, BDI, encargos,
+aprovações, importação/exportação, custos realizados, despesas/receitas, medições
+ou cronograma físico-financeiro. Nenhuma dependência nova é necessária.
+
 ## Qualidade e testes
 
 Os testes de identidade, organizações, clientes e obras usam PostgreSQL e banco separado
@@ -433,7 +484,9 @@ permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
 
 As factories mínimas ficam em `backend/tests/factories`: `UserFactory`,
 `OrganizationFactory`, `MembershipFactory`, `CustomerFactory`, `ProjectFactory`,
-`ProjectStageFactory` e `StagePlanFactory`. StagePlanFactory cria somente sua Stage
+`ProjectStageFactory`, `StagePlanFactory` e `BudgetItemFactory`. BudgetItemFactory
+cria somente sua Stage, com unit `un`, quantity `Decimal("1.0000")` e unit_price
+`Decimal("10.00")`, sem Planning implícito. StagePlanFactory cria somente sua Stage
 (Project/Organization derivam dela) e usa datas determinísticas válidas.
 ProjectStageFactory cria Project e mantém parent nulo;
 ao fornecer parent, informe explicitamente o mesmo Project, sem correção implícita.

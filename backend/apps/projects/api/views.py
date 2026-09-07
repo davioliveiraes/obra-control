@@ -1,3 +1,4 @@
+from django.db.models.deletion import ProtectedError
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
 from drf_spectacular.types import OpenApiTypes
@@ -7,9 +8,12 @@ from drf_spectacular.utils import (
     extend_schema,
     extend_schema_view,
 )
+from rest_framework import status
 from rest_framework.permissions import IsAuthenticated
+from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from apps.finances.models import Expense
 from apps.organizations.permissions import (
     HasActiveOrganization,
     IsOrganizationAdminOrReadOnly,
@@ -96,11 +100,16 @@ invalid_response = OpenApiResponse(
     destroy=extend_schema(
         description=(
             "Exclui definitivamente obra da organização ativa. "
+            "Despesas, inclusive canceladas, impedem a exclusão (409). "
             "Exige role OWNER ou ADMIN e CSRF."
         ),
         parameters=[csrf_header],
         responses={
             204: OpenApiResponse(description="Obra excluída; sem corpo de resposta."),
+            409: OpenApiResponse(
+                response=OpenApiTypes.OBJECT,
+                description="A obra possui registros financeiros e não pode ser excluída.",
+            ),
             403: forbidden_response,
             404: not_found_response,
         },
@@ -126,3 +135,21 @@ class ProjectViewSet(ModelViewSet):
 
     def perform_create(self, serializer):
         serializer.save(organization=self.request.organization)
+
+    def destroy(self, request, *args, **kwargs):
+        instance = self.get_object()
+        try:
+            self.perform_destroy(instance)
+        except ProtectedError as error:
+            # Only translate the known financial protection; don't hide other errors.
+            if not error.protected_objects or any(
+                not isinstance(obj, Expense) for obj in error.protected_objects
+            ):
+                raise
+            return Response(
+                {
+                    "detail": "A obra possui registros financeiros e não pode ser excluída."
+                },
+                status=status.HTTP_409_CONFLICT,
+            )
+        return Response(status=status.HTTP_204_NO_CONTENT)

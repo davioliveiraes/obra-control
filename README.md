@@ -467,6 +467,65 @@ Não há Budget/Header, versões, composições, insumos, SINAPI, BDI, encargos,
 aprovações, importação/exportação, custos realizados, despesas/receitas, medições
 ou cronograma físico-financeiro. Nenhuma dependência nova é necessária.
 
+## Despesas da obra / realizado financeiro (Etapa 12)
+
+`finances.Expense` representa realizado registrado, separado de BudgetItem (previsto).
+Possui BigAutoField, Project obrigatório (`PROTECT`, `project.expenses`), Stage
+opcional (`SET_NULL`, `stage.expenses`), description (255, obrigatória), amount,
+expense_date obrigatória, status, notes opcional e timestamps. Não duplica
+Organization nem possui vínculo com BudgetItem. ExpenseFactory cria somente
+Project, com stage nula, amount `Decimal("100.00")` e data determinística.
+
+Amount utiliza DecimalField(14, 2), de `0.01` a `999999999999.99`, representado
+como string decimal com duas casas na API. A constraint PostgreSQL
+`finances_expense_amount_positive` exige amount > 0, também em escritas diretas.
+A API rejeita zero, negativos, NaN/Infinity, excesso de casas e valores fora do
+limite com 400. Não usa float ou arredondamento silencioso de entrada.
+expense_date é a data financeira, independente do instante created_at.
+
+Rotas: `GET/POST /api/v1/projects/{project_id}/expenses/` e
+`GET/PATCH /api/v1/projects/{project_id}/expenses/{id}/`. HEAD/OPTIONS disponíveis;
+PUT/DELETE não são implementados. Lista `{count, next, previous, results}` em
+páginas fixas de 25, ordenada por `-expense_date, -id`, incluindo canceladas.
+`page_size` não altera o limite. Sem filtros, busca ou agregados.
+
+Project vem exclusivamente da URL, resolvido por request.organization; Expense
+é consultada por `project=project`. Project externo ou despesa fora do Project
+da URL retorna 404. POST exige description, amount e expense_date. stage_id
+é opcional/nullable e só pode apontar para Stage do mesmo Project. Etapa de outra
+obra/tenant e ID inexistente recebem o mesmo 400: `{"stage_id": ["Etapa indisponível."]}`.
+PATCH altera stage_id, description, amount, expense_date, status e notes. Stage
+omitida é preservada; null transforma a despesa em geral da obra. Campos extras
+stage/project/project_id/organization/organization_id são ignorados, nunca
+movendo o registro para outro Project ou tenant. A resposta não expõe Project ou
+Organization. `Expense.clean()` também valida Stage × Project para forms/validação
+explícita; não há full_clean automático em save nem constraint entre tabelas.
+Scripts/ORM direto devem respeitar essa invariante e o scoping explicitamente.
+
+ExpenseStatus contém somente active (padrão) e canceled. Cancelamento por PATCH
+preserva o registro, amount e Stage; não gera reversão, pagamento ou soft delete.
+Não há regra de transição adicional. OWNER/ADMIN têm leitura e POST/PATCH;
+MEMBER tem somente leitura. São reutilizadas as três permissions existentes,
+sessão e CSRF. OWNER/ADMIN com contexto e CSRF válidos recebem 405 em DELETE/PUT;
+para MEMBER, o DRF pode negar métodos unsafe com 403 antes do despacho, inclusive
+DELETE. Sem bypass para superuser; Membership revogada interrompe acesso.
+
+Excluir leaf Stage preserva Expense e Project, apenas tornando stage nula.
+RESTRICT entre parent/children continua ativo. Desde esta etapa, Project com
+qualquer Expense, inclusive canceled, não pode ser excluído: a API de Projects
+converte especificamente ProtectedError de Expenses em 409 com
+`{"detail": "A obra possui registros financeiros e não pode ser excluída."}`.
+A coleta PROTECT do ORM falha antes de executar deletes/SET_NULL; não há exclusão
+parcial. Project sem Expense continua deletável com as cascades anteriores.
+PROTECT/SET_NULL são políticas do ORM Django; as FKs do PostgreSQL também preservam
+integridade referencial, mas não implementam esses comportamentos como triggers.
+
+Expense não altera BudgetItem ou StagePlan: sem signals ou sincronização.
+Migration `finances.0001_initial`, aplicada explicitamente com `manage.py migrate`.
+Não há receitas, contas a pagar/receber, fluxo de caixa, fornecedores, categorias,
+pagamentos, anexos, auditoria completa, previsto × realizado agregado ou novas
+dependências. Cancelamento não substitui uma futura trilha de auditoria.
+
 ## Qualidade e testes
 
 Os testes de identidade, organizações, clientes e obras usam PostgreSQL e banco separado
@@ -484,7 +543,8 @@ permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
 
 As factories mínimas ficam em `backend/tests/factories`: `UserFactory`,
 `OrganizationFactory`, `MembershipFactory`, `CustomerFactory`, `ProjectFactory`,
-`ProjectStageFactory`, `StagePlanFactory` e `BudgetItemFactory`. BudgetItemFactory
+`ProjectStageFactory`, `StagePlanFactory`, `BudgetItemFactory` e `ExpenseFactory`.
+BudgetItemFactory
 cria somente sua Stage, com unit `un`, quantity `Decimal("1.0000")` e unit_price
 `Decimal("10.00")`, sem Planning implícito. StagePlanFactory cria somente sua Stage
 (Project/Organization derivam dela) e usa datas determinísticas válidas.

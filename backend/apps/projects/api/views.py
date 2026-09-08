@@ -13,7 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
-from apps.finances.models import Expense
+from apps.finances.models import Expense, Revenue
 from apps.organizations.permissions import (
     HasActiveOrganization,
     IsOrganizationAdminOrReadOnly,
@@ -100,7 +100,7 @@ invalid_response = OpenApiResponse(
     destroy=extend_schema(
         description=(
             "Exclui definitivamente obra da organização ativa. "
-            "Despesas, inclusive canceladas, impedem a exclusão (409). "
+            "Despesas e receitas, inclusive canceladas, impedem a exclusão (409). "
             "Exige role OWNER ou ADMIN e CSRF."
         ),
         parameters=[csrf_header],
@@ -143,7 +143,8 @@ class ProjectViewSet(ModelViewSet):
         except ProtectedError as error:
             # Only translate the known financial protection; don't hide other errors.
             if not error.protected_objects or any(
-                not isinstance(obj, Expense) for obj in error.protected_objects
+                not isinstance(obj, (Expense, Revenue))
+                for obj in error.protected_objects
             ):
                 raise
             return Response(

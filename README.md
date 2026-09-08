@@ -573,6 +573,68 @@ signals, dependências, Revenue, percentuais, dashboard ou gráficos. StagePlan 
 participa dos cálculos. BudgetItem e Expense continuam independentes e fontes da
 verdade; cada consulta recalcula o resumo a partir dos registros atuais.
 
+## Receitas realizadas da obra (Etapa 14)
+
+`finances.Revenue` registra uma entrada financeira já realizada, não contas a
+receber, faturamento ou uma promessa futura. Possui BigAutoField, Project obrigatório
+(`PROTECT`, `project.revenues`), description obrigatória (255), amount,
+revenue_date obrigatória, status, notes opcional e timestamps. Não duplica
+Organization e não possui Stage, Customer, contrato ou método de pagamento.
+
+Amount usa DecimalField(14, 2), representado como string com duas casas na API.
+A constraint PostgreSQL `finances_revenue_amount_positive` exige amount > 0.
+API e model também validam o mínimo `Decimal("0.01")`; a API rejeita zero,
+negativos, NaN/Infinity, mais de duas casas e valores acima de `999999999999.99`.
+Não utiliza float nem arredonda entradas silenciosamente. revenue_date representa
+a data financeira; created_at é o instante de cadastro, independentemente dela.
+
+Rotas: `GET/POST /api/v1/projects/{project_id}/revenues/` e
+`GET/PATCH /api/v1/projects/{project_id}/revenues/{id}/`. HEAD/OPTIONS disponíveis;
+PUT/DELETE não são implementados e não há destroy mixin. Páginas fixas de 25,
+em ordem `-revenue_date, -id`, incluindo canceladas. Sem filtros, busca ou
+ordering dinâmico; page_size não aumenta o limite. A paginação de outros módulos
+permanece igual.
+
+Project é resolvido na Organization ativa antes de processar o POST; todos os
+querysets de Revenue são filtrados pelo Project da URL. Project externo/inexistente
+e Revenue fora da obra da rota recebem 404 sem revelar existência. Create associa
+`serializer.save(project=project)` no backend. PATCH altera apenas description,
+amount, revenue_date, status e notes. Campos extras project/project_id/organization/
+organization_id/stage_id/customer_id são ignorados, não controlam relacionamentos
+e não aparecem na representação. Receita não pode ser transferida entre obras.
+
+RevenueStatus é independente de ExpenseStatus: active (padrão) e canceled.
+Cancelar via PATCH preserva Revenue, amount e Project, sem lançamento inverso,
+exclusão, soft delete ou qualquer automação. Não há workflow de transição adicional.
+OWNER/ADMIN podem ler e criar/editar, com CSRF válido; MEMBER é read-only.
+As três permissions existentes e SessionAuthentication são reutilizadas, sem
+bypass para superuser. Revogação de Membership interrompe o acesso na próxima
+request. OWNER/ADMIN recebem 405 em PUT/DELETE; MEMBER pode receber 403 por role
+antes do despacho de métodos unsafe, conforme o comportamento nativo do DRF.
+
+Project com Revenue, ativa ou cancelada, não pode ser excluído: a proteção
+financeira existente agora reconhece Expense **e** Revenue e retorna 409 com
+`{"detail": "A obra possui registros financeiros e não pode ser excluída."}`.
+Proteções inesperadas continuam sendo propagadas. Nenhuma parte da EAP, Planning
+ou Budget é removida quando a exclusão protegida falha. Project sem Expense nem
+Revenue continua deletável com as cascades anteriores. PROTECT é a política do
+ORM Django, não uma trigger customizada do PostgreSQL.
+
+Expense e Cost Summary permanecem inalterados. Revenue não entra em budget_total,
+actual_total ou variance_amount: o resumo continua BudgetItem × Expense ACTIVE.
+Teste de regressão comprova o mesmo resultado antes/depois de criar, editar e
+cancelar receita, sem modificar Expense, BudgetItem ou StagePlan.
+
+Migration `finances.0002_revenue`. RevenueFactory cria somente Project e sua
+Organization, com amount `Decimal("100.00")`, revenue_date `2026-09-05`, active
+e notes vazias. Não cria outros registros empresariais nem Membership.
+No OpenAPI, `FinancialRecordStatusEnum` nomeia explicitamente os valores
+active/canceled para evitar colisão com ProjectStatus. Esse componente de
+documentação é compartilhado, mas ExpenseStatus e RevenueStatus permanecem
+choices de domínio independentes; campos e valores dos payloads não mudam.
+Sem contas a receber/pagar, contratos, medições, DRE, consolidação de fluxo de caixa,
+categorias, dashboards, novas dependências ou alterações de migrations históricas.
+
 ## Qualidade e testes
 
 Os testes de identidade, organizações, clientes e obras usam PostgreSQL e banco separado
@@ -590,7 +652,8 @@ permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
 
 As factories mínimas ficam em `backend/tests/factories`: `UserFactory`,
 `OrganizationFactory`, `MembershipFactory`, `CustomerFactory`, `ProjectFactory`,
-`ProjectStageFactory`, `StagePlanFactory`, `BudgetItemFactory` e `ExpenseFactory`.
+`ProjectStageFactory`, `StagePlanFactory`, `BudgetItemFactory`, `ExpenseFactory` e
+`RevenueFactory`.
 BudgetItemFactory
 cria somente sua Stage, com unit `un`, quantity `Decimal("1.0000")` e unit_price
 `Decimal("10.00")`, sem Planning implícito. StagePlanFactory cria somente sua Stage

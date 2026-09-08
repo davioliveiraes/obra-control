@@ -152,4 +152,8 @@ SPECTACULAR_SETTINGS = {
     "DESCRIPTION": "API REST do ObraControl.",
     "VERSION": "1.0.0",
     "SERVE_INCLUDE_SCHEMA": False,
+    # Schema-only name: ExpenseStatus and RevenueStatus remain independent models' choices.
+    "ENUM_NAME_OVERRIDES": {
+        "FinancialRecordStatusEnum": [("active", "Active"), ("canceled", "Canceled")],
+    },
 }

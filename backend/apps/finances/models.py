@@ -60,3 +60,36 @@ class Expense(models.Model):
             raise ValidationError(
                 {"stage": "A etapa deve pertencer à mesma obra da despesa."}
             )
+
+
+class RevenueStatus(models.TextChoices):
+    ACTIVE = "active", "Active"
+    CANCELED = "canceled", "Canceled"
+
+
+class Revenue(models.Model):
+    project = models.ForeignKey(
+        "projects.Project", on_delete=models.PROTECT, related_name="revenues"
+    )
+    description = models.CharField(max_length=255)
+    amount = models.DecimalField(
+        max_digits=14,
+        decimal_places=2,
+        validators=[MinValueValidator(Decimal("0.01"))],
+    )
+    revenue_date = models.DateField()
+    status = models.CharField(
+        max_length=8, choices=RevenueStatus.choices, default=RevenueStatus.ACTIVE
+    )
+    notes = models.TextField(blank=True)
+    created_at = models.DateTimeField(auto_now_add=True)
+    updated_at = models.DateTimeField(auto_now=True)
+
+    class Meta:
+        constraints = [
+            models.CheckConstraint(
+                condition=models.Q(amount__gt=0),
+                name="finances_revenue_amount_positive",
+                violation_error_message="O valor da receita deve ser maior que zero.",
+            ),
+        ]

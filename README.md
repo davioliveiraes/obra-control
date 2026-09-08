@@ -635,6 +635,49 @@ choices de domínio independentes; campos e valores dos payloads não mudam.
 Sem contas a receber/pagar, contratos, medições, DRE, consolidação de fluxo de caixa,
 categorias, dashboards, novas dependências ou alterações de migrations históricas.
 
+## Resumo financeiro realizado da obra (Etapa 15)
+
+`GET /api/v1/projects/{project_id}/financial-summary/` retorna somente project_id,
+revenue_total, expense_total e realized_balance. HEAD/OPTIONS seguem o DRF;
+POST/PATCH/PUT/DELETE não são disponibilizados. Não há filtros temporais,
+paginação, breakdown por Stage ou endpoint global multi-Project.
+
+A view resolve Project por request.organization antes de chamar
+`finances.services.financial_summary.get_project_financial_summary(project)`.
+O service recebe Project autorizado e retorna um dictionary com Decimal,
+sem conhecer request, session, usuário, permissões ou Response.
+Reutiliza-se IsAuthenticated + HasActiveOrganization + IsOrganizationAdminOrReadOnly.
+OWNER/ADMIN/MEMBER podem consultar; superuser não tem bypass. Project externo ou
+inexistente retorna 404 equivalente. Membership revogada interrompe a próxima
+request. GET não exige CSRF; autenticação e CSRF de escrita permanecem intactos.
+
+- revenue_total: SUM de Revenue ACTIVE do Project; CANCELED é ignorada.
+- expense_total: SUM de Expense ACTIVE do Project, com ou sem Stage; CANCELED
+  é ignorada. A Stage não interfere no total.
+- realized_balance = revenue_total - expense_total. Saldo negativo é válido.
+- Sem registros ativos, todos os valores são `0.00`, nunca null.
+
+São dois aggregates `Sum("amount")` no PostgreSQL, sem carregar lançamentos em
+Python e sem consultar EAP, BudgetItem ou StagePlan. Testes com 0, 10 e 100 registros
+por fonte garantem duas consultas no service; autenticação/resolução do Project
+pertencem à camada HTTP e não entram nessa contagem. Não há cache, Redis, N+1,
+armazenamento do resumo na sessão ou persistência de totais.
+
+Somente Decimal é usado; valores financeiros saem como strings com exatamente
+duas casas. O service utiliza precisão local ampliada na subtração e o serializer
+suporta somas maiores que um lançamento individual, sem alterar o contexto global.
+Não há conversão para float ou arredondamento de entradas neste resumo.
+
+Cost Summary permanece BudgetItem × Expense ACTIVE, sem Revenue. Financial
+Summary não chama Cost Summary: suas fontes são exclusivamente Revenue e Expense.
+Teste de regressão confirma que consultar a nova visão não altera Cost Summary,
+Project, EAP, Budget, Planning ou lançamentos financeiros.
+
+O saldo realizado representa apenas entradas menos saídas registradas na obra:
+não é lucro contábil, saldo bancário, DRE ou fluxo de caixa completo. Sem novos
+models, migrations, factories de resumo, dependências, percentuais, dashboard,
+contas a pagar/receber, contratos, faturamento ou medições.
+
 ## Qualidade e testes
 
 Os testes de identidade, organizações, clientes e obras usam PostgreSQL e banco separado

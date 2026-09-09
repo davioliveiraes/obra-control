@@ -13,6 +13,7 @@ from rest_framework.permissions import IsAuthenticated
 from rest_framework.response import Response
 from rest_framework.viewsets import ModelViewSet
 
+from apps.daily_reports.models import DailyReport
 from apps.finances.models import Expense, Revenue
 from apps.organizations.permissions import (
     HasActiveOrganization,
@@ -100,7 +101,7 @@ invalid_response = OpenApiResponse(
     destroy=extend_schema(
         description=(
             "Exclui definitivamente obra da organização ativa. "
-            "Despesas e receitas, inclusive canceladas, impedem a exclusão (409). "
+            "RDOs, despesas e receitas, inclusive canceladas, impedem a exclusão (409). "
             "Exige role OWNER ou ADMIN e CSRF."
         ),
         parameters=[csrf_header],
@@ -108,7 +109,7 @@ invalid_response = OpenApiResponse(
             204: OpenApiResponse(description="Obra excluída; sem corpo de resposta."),
             409: OpenApiResponse(
                 response=OpenApiTypes.OBJECT,
-                description="A obra possui registros financeiros e não pode ser excluída.",
+                description="A obra possui registros vinculados e não pode ser excluída.",
             ),
             403: forbidden_response,
             404: not_found_response,
@@ -141,15 +142,15 @@ class ProjectViewSet(ModelViewSet):
         try:
             self.perform_destroy(instance)
         except ProtectedError as error:
-            # Only translate the known financial protection; don't hide other errors.
+            # Only translate known linked records; don't hide other errors.
             if not error.protected_objects or any(
-                not isinstance(obj, (Expense, Revenue))
+                not isinstance(obj, (Expense, Revenue, DailyReport))
                 for obj in error.protected_objects
             ):
                 raise
             return Response(
                 {
-                    "detail": "A obra possui registros financeiros e não pode ser excluída."
+                    "detail": "A obra possui registros vinculados e não pode ser excluída."
                 },
                 status=status.HTTP_409_CONFLICT,
             )

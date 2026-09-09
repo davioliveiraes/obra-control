@@ -514,7 +514,7 @@ Excluir leaf Stage preserva Expense e Project, apenas tornando stage nula.
 RESTRICT entre parent/children continua ativo. Desde esta etapa, Project com
 qualquer Expense, inclusive canceled, não pode ser excluído: a API de Projects
 converte especificamente ProtectedError de Expenses em 409 com
-`{"detail": "A obra possui registros financeiros e não pode ser excluída."}`.
+`{"detail": "A obra possui registros vinculados e não pode ser excluída."}`.
 A coleta PROTECT do ORM falha antes de executar deletes/SET_NULL; não há exclusão
 parcial. Project sem Expense continua deletável com as cascades anteriores.
 PROTECT/SET_NULL são políticas do ORM Django; as FKs do PostgreSQL também preservam
@@ -614,7 +614,7 @@ antes do despacho de métodos unsafe, conforme o comportamento nativo do DRF.
 
 Project com Revenue, ativa ou cancelada, não pode ser excluído: a proteção
 financeira existente agora reconhece Expense **e** Revenue e retorna 409 com
-`{"detail": "A obra possui registros financeiros e não pode ser excluída."}`.
+`{"detail": "A obra possui registros vinculados e não pode ser excluída."}`.
 Proteções inesperadas continuam sendo propagadas. Nenhuma parte da EAP, Planning
 ou Budget é removida quando a exclusão protegida falha. Project sem Expense nem
 Revenue continua deletável com as cascades anteriores. PROTECT é a política do
@@ -677,6 +677,62 @@ O saldo realizado representa apenas entradas menos saídas registradas na obra:
 não é lucro contábil, saldo bancário, DRE ou fluxo de caixa completo. Sem novos
 models, migrations, factories de resumo, dependências, percentuais, dashboard,
 contas a pagar/receber, contratos, faturamento ou medições.
+
+## RDO — relatório diário de obra (Etapa 16)
+
+`apps.daily_reports` separa o diário operacional dos domínios de EAP, planejamento
+e financeiro. `DailyReport` pertence obrigatoriamente a Project (`PROTECT`), sem
+duplicar Organization. A data operacional `report_date` é obrigatória, aceita
+registro retroativo e possui unicidade por obra/data no PostgreSQL
+(`daily_reports_project_date_unique`). `weather_notes` é texto opcional de até
+255 caracteres; `general_notes` é texto livre opcional. Não há status ou aprovação.
+
+`DailyReportActivity` pertence obrigatoriamente ao RDO (`CASCADE`) e contém
+descrição obrigatória, `position >= 0` (default 0) e `stage_id` opcional/nullable.
+A etapa precisa pertencer à mesma obra do RDO, validada no serializer e em
+`clean()` do model; `save()` não executa `full_clean()` automaticamente.
+Excluir uma etapa leaf preserva a atividade com Stage nula (`SET_NULL`), sem
+alterar descrição/RDO. A restrição de exclusão de etapas com filhos permanece.
+
+Endpoints sob `/api/v1/projects/{project_id}/daily-reports/`:
+
+- `GET/POST /`: lista paginada em 25 registros, ordem `-report_date, -id`, ou cria RDO.
+- `GET/PATCH/DELETE /{id}/`: consulta, altera data/observações ou exclui RDO e atividades.
+- `GET/POST /{report_id}/activities/`: lista plana completa, ordem `position, id`, ou cria atividade.
+- `GET/PATCH/DELETE /{report_id}/activities/{id}/`: consulta, altera descrição/posição/Stage ou exclui atividade.
+
+Sem PUT, nested writes, filtros, ordering dinâmico ou page_size configurável.
+As representações contêm somente os campos públicos e timestamps: não incluem
+Project, Organization ou objetos relacionados aninhados. Campos extras de
+contexto do payload são ignorados, sem permitir transferência de obra/RDO.
+
+Toda resolução segue Organization ativa → Project → DailyReport → Activity.
+IDs cross-tenant, cross-project e cross-report retornam 404. `stage_id` é resolvido
+somente na EAP da obra; etapas externas e IDs inexistentes retornam o mesmo 400.
+Duplicidade de data no POST/PATCH retorna 400, inclusive se requests concorrentes
+passarem na validação inicial. Apenas a violação da constraint específica é
+traduzida; outras falhas de integridade não são mascaradas.
+
+As três permissions existentes são reutilizadas: OWNER/ADMIN escrevem, MEMBER
+somente lê (GET/HEAD/OPTIONS). Escrita exige Session Authentication + CSRF; role
+insuficiente retorna 403, revogação de Membership interrompe a próxima request e
+superuser não tem bypass. Não há role/tenant persistido adicionalmente na session.
+
+Project com RDO, Expense ou Revenue não pode ser excluído: a API trata somente
+`ProtectedError` dos vínculos conhecidos e retorna 409 com
+`{"detail": "A obra possui registros vinculados e não pode ser excluída."}`.
+A mensagem substitui a referência anterior exclusivamente financeira. Excluir
+explicitamente o RDO remove suas atividades e preserva a obra; se não restarem
+outros registros protegidos, a exclusão da obra volta a ser permitida.
+
+Migration: `daily_reports.0001_initial`. Factories: `DailyReportFactory` usa data
+determinística e observações vazias; `DailyReportActivityFactory` cria somente
+o RDO necessário, sem Stage implícita, com posição zero. As factories não corrigem
+associações inconsistentes automaticamente.
+
+Planning, Budget, Expense, Revenue e os dois summaries permanecem independentes.
+Sem fotos/anexos, equipes, horas, equipamentos, materiais consumidos, progresso,
+assinatura/aprovação, auditoria completa, clima estruturado ou novas dependências.
 
 ## Qualidade e testes
 

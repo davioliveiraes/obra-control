@@ -382,7 +382,7 @@ def test_project_protection_returns_409_without_partial_deletes(
     response = tenant_client.delete(f"/api/v1/projects/{stage.project_id}/")
     assert response.status_code == 409
     assert response.json() == {
-        "detail": "A obra possui registros financeiros e não pode ser excluída."
+        "detail": "A obra possui registros vinculados e não pode ser excluída."
     }
     assert {
         model: list(model.objects.order_by("pk").values()) for model in models

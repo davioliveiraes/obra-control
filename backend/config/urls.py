@@ -10,6 +10,10 @@ api_v1_urlpatterns = [
     path("projects/<int:project_id>/planning/", include("apps.planning.api.urls")),
     path("projects/<int:project_id>/budget/items/", include("apps.budgets.api.urls")),
     path("projects/<int:project_id>/", include("apps.finances.api.urls")),
+    path(
+        "projects/<int:project_id>/daily-reports/",
+        include("apps.daily_reports.api.urls"),
+    ),
     path("projects/", include("apps.projects.api.urls")),
 ]
 

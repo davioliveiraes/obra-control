@@ -3,6 +3,8 @@
 from django.contrib import admin
 from django.urls import include, path
 
+from apps.progress.api.progress_summary_views import ProjectProgressSummaryView
+
 api_v1_urlpatterns = [
     path("auth/", include("apps.accounts.api.urls")),
     path("organizations/", include("apps.organizations.api.urls")),
@@ -17,6 +19,11 @@ api_v1_urlpatterns = [
     path(
         "projects/<int:project_id>/stages/<int:stage_id>/progress/",
         include("apps.progress.api.urls"),
+    ),
+    path(
+        "projects/<int:project_id>/progress-summary/",
+        ProjectProgressSummaryView.as_view(),
+        name="project-progress-summary",
     ),
     path("projects/", include("apps.projects.api.urls")),
 ]

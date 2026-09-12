@@ -800,6 +800,75 @@ pesos, progresso global do Project, progresso planejado, curva S, earned value,
 quantidade executada, integração automática com RDO, aprovação, assinatura,
 auditoria, dashboard ou novas dependências.
 
+## Resumo do progresso físico atual por EAP (Etapa 18)
+
+`GET /api/v1/projects/{project_id}/progress-summary/` consulta o último apontamento
+elegível de **cada** ProjectStage da obra. HEAD/OPTIONS seguem o DRF; não há
+POST/PATCH/PUT/DELETE. Lista plana completa em ordem `position, id`, sem paginação,
+filtros ou parâmetros públicos de data. O CRUD histórico da Etapa 17 não muda.
+
+Exemplo de resposta:
+
+```json
+{
+  "project_id": 10,
+  "as_of_date": "2026-09-12",
+  "stages": [
+    {
+      "stage_id": 20,
+      "progress_entry_id": 100,
+      "progress_date": "2026-09-09",
+      "progress_percentage": "62.50"
+    },
+    {
+      "stage_id": 21,
+      "progress_entry_id": null,
+      "progress_date": null,
+      "progress_percentage": null
+    }
+  ]
+}
+```
+
+A view obtém `timezone.localdate()` uma única vez. O fuso Django configurado é
+`America/Fortaleza`, com `USE_TZ=True`; não há fuso por usuário/Organization.
+Essa mesma data é enviada explicitamente ao service como `as_of_date` e retornada
+na resposta. `as_of_date` informa o corte aplicado pelo servidor, não oferece um
+filtro. Entradas futuras continuam permitidas no histórico, mas só aparecem neste
+resumo quando `progress_date <= as_of_date`.
+
+A seleção usa `-progress_date, -id`, nunca cadastro, edição, maior ID isolado ou
+maior percentual. Uma revisão de 70.00 para 68.00 em data posterior retorna 68.00;
+um lançamento retroativo cadastrado depois não substitui uma data mais recente.
+Sem apontamento elegível (inclusive histórico somente futuro), os três campos
+de progresso são JSON null. Zero informado mantém ID/data e retorna `"0.00"`;
+percentuais são strings Decimal com duas casas, inclusive `"100.00"`. Obra sem
+etapas retorna `stages: []` com HTTP 200.
+
+Os valores são diretos: parent sem apontamento continua com null, mesmo que filhos
+tenham progresso; parent com apontamento próprio preserva seu valor. Sem roll-up,
+média, soma, pesos, progresso global, status inferido ou consulta a Planning,
+Budget, Expense, Revenue e RDO. Nenhum agregado é persistido.
+
+Project é resolvido no queryset de `request.organization` antes do service
+`progress.services.progress_summary.get_project_progress_summary(project, *, as_of_date)`.
+O service não conhece request/session/roles nem consulta o relógio. Retorna um
+dictionary materializado, com date e Decimal/None, em **uma consulta SQL**: Stages
+filtradas pela obra, anotadas com três Subqueries/OuterRef, cada uma limitada ao
+mesmo primeiro apontamento elegível. Não há consulta por etapa nem carregamento
+do histórico completo. Testes medem o service separadamente da resolução HTTP.
+
+São reutilizadas as três permissions existentes: OWNER/ADMIN/MEMBER consultam;
+sem contexto válido, 403; Project externo/inexistente, 404 equivalente. Superuser
+não tem bypass; Membership revogada bloqueia a próxima request. SessionAuthentication
+e CSRF permanecem intactos; GET não exige token. Respostas usam `no-store`, sem
+cache de resultado em sessão ou variável global.
+
+PATCH/DELETE autorizados no histórico afetam a consulta seguinte. Excluir o último
+apontamento revela o anterior elegível; excluir o único elegível volta a null.
+Este resumo não é auditoria nem snapshot histórico imutável. Sem novos models,
+migrations, dependências ou mudanças no schema do banco.
+
 ## Qualidade e testes
 
 Os testes de identidade, organizações, clientes e obras usam PostgreSQL e banco separado

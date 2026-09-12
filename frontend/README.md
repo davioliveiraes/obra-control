@@ -1,32 +1,41 @@
-# ObraControl — frontend (F1)
+# ObraControl — frontend (F2)
 
-Fundação técnica em React, TypeScript e Vite: tela inicial em português,
-checagem de tipos, lint, formatação, teste de componente e build.
-Não implementa funcionalidades empresariais, rotas, autenticação, seleção
-de organização ou integração HTTP.
+Integração local inicial em React, TypeScript e Vite: preparação de CSRF,
+consulta da sessão atual e estados de verificação, sessão autenticada,
+ausência de sessão e falha com tentativa manual.
 
-A tela funciona **sem o backend ligado** e sem configuração de banco.
-Não é necessário copiar arquivos de `.local/` ou configurações privadas.
-Não há variáveis de ambiente consumidas pelo frontend nesta etapa.
+A integração real **precisa do Django ligado**. Os testes frontend usam
+mocks locais de fetch e continuam independentes do backend.
+Não há formulário de login, logout, seleção de organização, rotas ou
+módulos empresariais. Não é necessário copiar arquivos de `.local/`,
+configurações privadas ou criar variáveis de ambiente para o frontend.
 
-## Ambiente
+## Ambiente preservado da F1
 
 - Windows x64 / PowerShell.
 - Node.js **24.21.0 LTS**; requisito: `>=24.21.0 <25`.
 - npm **11.19.0**; requisito: `>=11.19.0 <12`.
-- Pacote independente: instalação e lockfile em `frontend/`.
+- Pacote independente, instalação e lockfile em `frontend/`.
 - `packageManager` registra npm; `.npmrc` mantém `engine-strict=true`.
 
-O ambiente original tinha Node 22.20.0 e npm 10.9.3. Para esta F1 foi usado
-o ZIP oficial portátil de Node 24.21.0, conferido por SHA-256, com npm 11.19.0.
-O PATH foi ajustado somente nos processos de validação; a instalação global
-permanece intacta. Em um novo terminal, disponibilize as versões requeridas
-no PATH antes de executar os comandos. Node 22.20.0 não atende a esta base.
+A F2 reutilizou o Node portátil preparado na F1. O ambiente global,
+Node 22.20.0 e npm 10.9.3, não foi atualizado. Para usar a instalação
+portátil disponível neste ambiente, ajuste somente o terminal atual:
 
-Confira com `node --version` e `npm --version`. Não misture gerenciadores;
-o npm mantém `package-lock.json`, sem edição manual.
+```powershell
+$nodeF1 = Join-Path $env:TEMP 'obracontrol-f1-dcab8a7ff8fb4bb6b0f4705420e20231\node-v24.21.0-win-x64'
+$env:PATH = "$nodeF1;$env:PATH"
+Get-Command node, npm.cmd
+node --version
+npm.cmd --version
+```
 
-Versões fixadas:
+Esse caminho é temporário e específico do ambiente validado; se não
+existir, disponibilize a versão requerida antes de executar os comandos.
+Não use silenciosamente o Node global incompatível. Não misture
+gerenciadores nem edite o lockfile manualmente.
+
+Nenhuma dependência foi adicionada ou atualizada na F2:
 
 | Pacote                          | Versão  |
 | ------------------------------- | ------- |
@@ -49,194 +58,370 @@ Versões fixadas:
 | @testing-library/dom            | 10.4.1  |
 | @testing-library/jest-dom       | 7.0.1   |
 
-Os engines e peers dessas versões exatas foram consultados no registro npm.
-TypeScript 6.0.3 atende à faixa `>=4.8.4 <6.1.0` do typescript-eslint;
-TypeScript 7 não foi selecionado. Node 24.21.0 atende ao mínimo 24.15.0
-do jsdom 30.0.1. Vite 8 é aceito pelo plugin React 6 e pelo Vitest 5.
-Testing Library aceita React 19, seus tipos e DOM 10.
+A base oficial `react-ts` do Vite entregue na F1 foi preservada, sem novo
+scaffold. Manifesto e lockfile permaneceram idênticos, conferidos por
+SHA-256 antes e depois de `npm.cmd ci`.
 
-Referências: [Node 24.21.0 LTS](https://nodejs.org/en/blog/release/v24.21.0),
-[template Vite](https://vite.dev/guide/),
-[typescript-eslint](https://typescript-eslint.io/users/dependency-versions/),
-[Vitest](https://vitest.dev/guide/) e
-[Testing Library](https://testing-library.com/docs/react-testing-library/setup/).
+## Iniciar os serviços locais
 
-## Instalação e desenvolvimento
-
-A partir da raiz do repositório, com as versões requeridas no PATH:
+Terminal do backend, a partir da raiz:
 
 ```powershell
-Set-Location frontend
-npm ci
-npm run dev
+Set-Location C:\Users\Davil\obra-control
+.\.venv\Scripts\python.exe .\.local\dev_local.py backend\manage.py check
+.\.venv\Scripts\python.exe .\.local\dev_local.py backend\manage.py runserver 127.0.0.1:8000 --noreload
 ```
 
-Desenvolvimento: **http://127.0.0.1:5173/**.
-`strictPort: true` faz o servidor falhar se a porta estiver ocupada,
-sem mudar silenciosamente a origem. Use Ctrl+C para encerrar seu servidor.
-
-Para conferir o build:
+Todo comando Python deve ser argumento desse executor. Ele utiliza a
+configuração privada já existente e o PostgreSQL configurado.
+Não copie essa configuração nem a exponha em logs. Não recrie o ambiente
+e não aplique migrations automaticamente. Para inspecionar o estado:
 
 ```powershell
-npm run build
-npm run preview
+.\.venv\Scripts\python.exe .\.local\dev_local.py backend\manage.py showmigrations --plan
 ```
 
-Preview: **http://127.0.0.1:4173/**, também com host local e porta fixa.
-Serve `dist/` para conferência; não é um servidor de produção.
-
-## Comandos
-
-Execute dentro de `frontend/`; o npm executa os scripts na raiz deste pacote.
-
-| Comando                | Implementação               |
-| ---------------------- | --------------------------- |
-| `npm run dev`          | `vite`                      |
-| `npm run typecheck`    | `tsc -b --pretty false`     |
-| `npm run lint`         | `eslint . --max-warnings 0` |
-| `npm run format`       | `prettier --write .`        |
-| `npm run format:check` | `prettier --check .`        |
-| `npm run test`         | `vitest run`                |
-| `npm run test:watch`   | `vitest`                    |
-| `npm run build`        | `tsc -b && vite build`      |
-| `npm run preview`      | `vite preview`              |
-
-Verificação reproduzível, executando cada comando separadamente:
+Outro terminal, com o Node portátil no PATH:
 
 ```powershell
-npm ci
-npm ls --depth=0
-npm run typecheck
-npm run lint
-npm run format:check
-npm run test
-npm run build
+Set-Location C:\Users\Davil\obra-control\frontend
+npm.cmd ci
+npm.cmd run dev
 ```
 
-No PowerShell, capture `$LASTEXITCODE` imediatamente após cada comando nativo
-para registrar seu resultado; o sucesso de um comando posterior não valida
-o anterior. `npm.cmd` pode ser usado para chamar o mesmo gerenciador
-diretamente no Windows, sem alterar políticas de execução.
+Abra **http://127.0.0.1:5173/**. Para conferir o build, mantendo Django ligado:
 
-## Estrutura e qualidade
+```powershell
+npm.cmd run build
+npm.cmd run preview
+```
+
+Preview: **http://127.0.0.1:4173/**. Os servidores usam host local e
+`strictPort: true`; uma porta ocupada causa falha, sem trocar a origem.
+Encerre somente os processos iniciados por você. No terminal interativo
+do Vite, `q` seguido de Enter encerra o servidor; o runserver informa
+CTRL-BREAK no Windows.
+
+## Comandos de qualidade
+
+Execute cada comando separadamente dentro de `frontend/`:
+
+| Comando                    | Implementação               |
+| -------------------------- | --------------------------- |
+| `npm.cmd run dev`          | `vite`                      |
+| `npm.cmd run typecheck`    | `tsc -b --pretty false`     |
+| `npm.cmd run lint`         | `eslint . --max-warnings 0` |
+| `npm.cmd run format`       | `prettier --write .`        |
+| `npm.cmd run format:check` | `prettier --check .`        |
+| `npm.cmd run test`         | `vitest run`                |
+| `npm.cmd run test:watch`   | `vitest`                    |
+| `npm.cmd run build`        | `tsc -b && vite build`      |
+| `npm.cmd run preview`      | `vite preview`              |
+
+Verificação reproduzível:
+
+```powershell
+npm.cmd ci
+npm.cmd ls --depth=0
+npm.cmd run typecheck
+npm.cmd run lint
+npm.cmd run format:check
+npm.cmd run test
+npm.cmd run build
+```
+
+Capture `$LASTEXITCODE` imediatamente após cada comando nativo.
+O sucesso do comando seguinte não valida o anterior. `npm.cmd` chama
+o gerenciador diretamente no Windows, sem alterar políticas do PowerShell.
+
+## Contratos confirmados no backend
+
+As URLs são montadas por [config/urls.py](../backend/config/urls.py) e
+[accounts/api/urls.py](../backend/apps/accounts/api/urls.py).
+As implementações estão em [views.py](../backend/apps/accounts/api/views.py),
+e os campos em [serializers.py](../backend/apps/accounts/api/serializers.py).
+
+| Operação                                           | Contrato observado                                                                                       |
+| -------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
+| `GET /api/v1/auth/csrf/`                           | 200 JSON, objeto com `csrfToken` string; token mascarado gerado pelo Django e cookie CSRF                |
+| `GET /api/v1/auth/me/` autenticado                 | 200 JSON: `id` inteiro positivo, `email` string, `first_name` e `last_name` strings que podem ser vazias |
+| `GET /api/v1/auth/me/` sem sessão                  | 403 JSON com o único campo `detail`, conforme abaixo                                                     |
+| `POST /api/v1/auth/login/` com JSON `{}` sem token | 403 HTML de rejeição CSRF                                                                                |
+| Mesmo POST com cookies e token válidos             | 400 JSON de validação dos campos obrigatórios, conforme abaixo                                           |
+
+Resposta anônima confirmada na configuração local em português:
+
+```json
+{
+  "detail": "As credenciais de autenticação não foram fornecidas."
+}
+```
+
+Resposta da sonda com CSRF válido e corpo vazio:
+
+```json
+{
+  "email": ["Este campo é obrigatório."],
+  "password": ["Este campo é obrigatório."]
+}
+```
+
+`LoginView` aplica `csrf_protect` ao dispatch, inclusive para anônimos.
+`LoginSerializer` valida email e password antes de chamar authenticate;
+portanto o JSON `{}` usado na sonda não pode autenticar.
+`MeView` usa `IsAuthenticated`, com `SessionAuthentication` do DRF.
+Os dois GETs aplicam `never_cache`.
+
+Evidências automatizadas:
+[test_auth_api.py](../backend/tests/accounts/test_auth_api.py) verifica
+cookies, CSRF anônimo, origem rejeitada, validação de campos e identidade;
+[test_auth_schema.py](../backend/tests/accounts/test_auth_schema.py) verifica
+o schema gerado pelo drf-spectacular, SessionAuth e requisitos CSRF.
+A configuração pertinente está em
+[settings/base.py](../backend/config/settings/base.py).
+Não foi criado contrato alternativo ou arquivo OpenAPI no frontend.
+
+O transporte não interpreta autorização. Apenas `getCurrentUser` reconhece
+o 403 de `/me/` com esse objeto e essa mensagem **completa e exata**.
+O backend não retorna um código de erro legível por máquina que permita
+essa classificação. A implementação depende do contrato atual em pt-br:
+uma mudança de idioma ou formato resulta em erro, não em anonimato.
+Sessão ausente, expirada, revogada ou usuário inativo podem produzir a
+mesma resposta; não é possível distingui-los por esse contrato.
+Outros 403, inclusive os da preparação CSRF, permanecem erros.
+
+Não existem campos organization, role ou access_token nesse contrato.
+Os nomes HTTP são preservados, inclusive `csrfToken`; não há conversor
+global entre camelCase e snake_case.
+
+## Proxy, Host, Origin e cookies
+
+O navegador chama caminhos relativos `/api/v1/...` na origem do Vite.
+Somente esse prefixo é encaminhado a **http://127.0.0.1:8000**,
+preservando o caminho e as barras finais, sem rewrite.
+
+`changeOrigin: false` mantém o Host recebido pelo Vite.
+Origin também é preservado. Na implementação instalada do Vite 8.3.0,
+os headers de entrada são copiados e Host só é substituído quando
+`changeOrigin` está habilitado. O preview herda `server.proxy`,
+confirmado na configuração resolvida, sem duplicar a definição.
+
+Na configuração efetiva inspecionada:
+
+- `ALLOWED_HOSTS` permite localhost e 127.0.0.1;
+  `USE_X_FORWARDED_HOST` está desabilitado.
+- `CSRF_TRUSTED_ORIGINS` contém apenas `http://localhost:8000`.
+  As origens do Vite não precisam ser adicionadas nesta topologia:
+  Django recebe Host e Origin correspondentes, incluindo a porta,
+  e aceita essa origem pela comparação com `request.get_host()`.
+- O cookie `csrftoken` usa Path `/`, SameSite=Lax, Secure=false,
+  HttpOnly=false e nenhum Domain configurado.
+- O cookie de sessão `sessionid` usa Path `/`, SameSite=Lax,
+  Secure=false, HttpOnly=true e nenhum Domain configurado.
+  Nenhum cookie de sessão foi criado nas sondas anônimas.
+- `CSRF_USE_SESSIONS` está desabilitado.
+
+O navegador recebeu o cookie CSRF na origem local. Cookies não são
+separados por porta; esta topologia usa consistentemente 127.0.0.1.
+Não houve necessidade de cookieDomainRewrite, cookiePathRewrite,
+CORS amplo, alteração de SameSite ou ajuste no backend.
+
+A raiz, o workspace e o envDir resolvidos continuam em `frontend/`.
+`server.fs.strict` está habilitado e `server.fs.allow` contém somente
+essa pasta, incluindo suas dependências. Raiz do repositório, backend
+e `.local/` ficam fora da área permitida. Não há envDir externo,
+variável VITE_API_URL ou cópia de configuração privada.
+
+Referências:
+[proxy do Vite](https://vite.dev/config/server-options#server-proxy),
+[proxy do preview](https://vite.dev/config/preview-options#preview-proxy) e
+[CSRF do Django](https://docs.djangoproject.com/en/5.2/ref/csrf/).
+
+O proxy de desenvolvimento/preview é local. O build não incorpora esse
+servidor; produção precisa de configuração própria de hospedagem,
+HTTPS, encaminhamento da API e validação de Host, Origin e cookies.
+O preview não é servidor de produção.
+
+## Transporte e inicialização
+
+`shared/api/client.ts` expõe uma função `request` com fetch nativo.
+Ela aceita somente caminhos internos normalizados sob `/api/v1/`;
+URLs externas, escapes e separadores codificados ambíguos são rejeitados.
+
+Credenciais e modo são sempre `same-origin`, Accept é JSON e
+`redirect: "error"` impede seguir redirects inesperados.
+O chamador não pode sobrescrever essas proteções nem adicionar headers
+arbitrários. JSON define Content-Type quando há corpo; GET não aceita corpo.
+POST, PUT, PATCH e DELETE exigem token explícito e enviam X-CSRFToken.
+Leituras não enviam esse header. Não há Authorization nem manipulação
+manual do cookie de sessão.
+
+Cada requisição tem timeout de **15 segundos**, incluindo a leitura do
+corpo, e aceita AbortSignal. Timers e listeners são removidos ao terminar.
+Cancelamento do chamador e timeout abortam o fetch e são distintos de
+falha de rede, inclusive se um mock ignorar o sinal.
+
+`ApiError.failure` diferencia HTTP, rede, timeout, cancelamento,
+requisição inválida e resposta inválida. Somente HTTP carrega o status
+real e o payload JSON como `unknown`. Corpo HTML/texto ou JSON ilegível
+não apaga o status de um erro HTTP nem é exposto pela mensagem.
+204 não lê JSON; sucesso HTML, JSON malformado ou vazio é inválido.
+Um 204 não satisfaz os objetos obrigatórios de CSRF e identidade.
+Essas categorias são locais, não códigos atribuídos ao backend.
+
+`features/auth/api.ts` usa `cache: "no-store"` e verificações runtime
+dos campos e tipos. O bootstrap obtém CSRF, descarta o token de preparação
+e consulta `/me/`. Obter CSRF não prova autenticação nem significa que
+o GET exija CSRF. O helper continua disponível para obter um token por
+operação futura; não há cache global permanente ou mutação de autenticação.
+
+`useSessionBootstrap` mantém estados explícitos. Retry limpa a identidade
+anterior e inicia nova verificação. Cleanup aborta requisições obsoletas;
+o identificador da tentativa e o sinal impedem resultados atrasados.
+StrictMode permanece ativo, com um novo controller por efeito.
+Não há polling, retry automático, refresh, redirect ou logout automático.
+Nenhum token, identidade ou credencial é persistido em localStorage ou
+sessionStorage. A interface apresenta mensagens seguras, sem HTML da API,
+tracebacks, cookies ou headers sensíveis.
+
+## Estrutura e testes
+
+Arquivos de aplicação e testes utilizados:
 
 ```text
-frontend/
-├── .gitattributes
-├── .gitignore
-├── .npmrc
-├── .prettierignore
-├── .prettierrc.json
-├── README.md
-├── eslint.config.js
-├── index.html
-├── package.json
-├── package-lock.json
-├── tsconfig.json
-├── tsconfig.app.json
-├── tsconfig.node.json
-├── vite.config.ts
-└── src/
-    ├── main.tsx
-    ├── styles.css
-    ├── app/
-    │   ├── App.tsx
-    │   └── App.test.tsx
-    └── test/
-        └── setup.ts
+src/
+  main.tsx
+  styles.css
+  app/
+    App.tsx
+    App.test.tsx
+  features/auth/
+    api.ts
+    api.test.ts
+    useSessionBootstrap.ts
+    useSessionBootstrap.test.tsx
+    SessionStatus.tsx
+  shared/api/
+    client.ts
+    client.test.ts
+  test/
+    apiFixtures.ts
+    setup.ts
 ```
 
-Base oficial: `create-vite@9.2.1`, template `react-ts`, opção `--eslint`.
-Somente os exemplos e assets gerados nesta tarefa foram removidos.
-O CSS usa fontes do sistema, sem recursos externos ou identidade definitiva.
+`main.tsx` monta a aplicação; App contém somente composição.
+A tela preserva main/h1 e usa região de sessão, status/alert,
+botão de retry e foco visível. O CSS usa fontes do sistema e não carrega
+recursos externos ou identidade visual definitiva.
 
-`main.tsx` monta a aplicação; `App.tsx` contém a composição mínima.
-Os project references do template foram preservados, com `strict: true`
-explícito nos dois projetos. `tsconfig.app.json` inclui todo `src/`,
-alcançando teste e setup, e mantém `vite/client`. `tsconfig.node.json`
-inclui `vite.config.ts`. `tsc -b` verifica ambos; o build só chama o Vite
-se essa verificação passar.
+Os project references e `strict: true` da F1 foram preservados:
+`tsconfig.app.json` inclui todo src, testes e setup, com `vite/client`;
+`tsconfig.node.json` inclui Vite/Vitest. `tsc -b` verifica ambos.
+O build só executa Vite após a checagem de tipos.
 
-ESLint usa flat config e recomendações de JavaScript, TypeScript, React Hooks
-e React Refresh. Prettier funciona separadamente, com LF e sem plugin de
-lint para formatação. Os comandos se restringem ao frontend. Dependências,
-build, caches, arquivos de ambiente e lockfile ficam fora da formatação;
-o manifesto, o lockfile e os fontes continuam versionáveis.
+ESLint mantém flat config, TypeScript, React Hooks e React Refresh.
+Prettier é separado e limitado ao frontend. As regras existentes ignoram
+dependências, build, caches e arquivos locais; o lockfile fica a cargo
+do npm. `.gitattributes` mantém LF nos textos do frontend.
 
-O Git local usa `core.autocrlf=true`. `frontend/.gitattributes` fixa LF somente
-nos arquivos de texto do frontend, evitando que um novo checkout em Windows
-entre em conflito com o Prettier. Nenhuma configuração global foi alterada.
+Vitest usa jsdom, imports explícitos, globals desabilitados e cleanup
+em afterEach. O setup também restaura mocks, globals substituídos e timers.
+Os testes cobrem transporte, validação runtime, resposta anônima exata,
+identidade fictícia, falhas, retry, respostas obsoletas e StrictMode.
+Nenhum teste frontend exige Django, contas reais ou chamadas externas.
 
-Vitest usa jsdom, imports explícitos, `globals: false`, matchers de
-`@testing-library/jest-dom/vitest` e cleanup registrado em `afterEach`.
-O teste renderiza App, encontra `main` pelo papel semântico e verifica o
-heading acessível "ObraControl" e a mensagem de fundação técnica.
-O comando padrão executa uma vez e encerra. Não há Jest, chamadas externas,
-snapshots, cobertura obrigatória ou sucesso artificial sem testes.
+Regressão backend, na raiz e pelo executor:
 
-## Arquivos servidos e API futura
+```powershell
+.\.venv\Scripts\python.exe .\.local\dev_local.py -m pytest -p no:cacheprovider backend/tests/accounts/test_auth_api.py backend/tests/accounts/test_auth_schema.py
+.\.venv\Scripts\python.exe .\.local\dev_local.py -m pytest -p no:cacheprovider
+```
 
-A raiz efetiva do Vite é `frontend/`. `server.fs.strict` está habilitado e
-`server.fs.allow` permite somente essa pasta, incluindo seu `node_modules/`.
-A lista explícita impede ampliação automática por descoberta de workspace.
-A raiz do repositório, `backend/` e `.local/` não são permitidos.
-Não há `envDir` externo, proxy, cliente HTTP ou arquivos em `public/`.
+## Validação da F2 em 12/09/2026
 
-**Proposta ainda não implementada:**
+Estado inicial limpo em main, F1 confirmada pelo conteúdo do HEAD
+`66fc2d86c6a635c222150df057db93699b24957e`. A referência remota local
+origin/main apontava para o mesmo commit; isso não é consulta atual ao remoto.
 
-1. O navegador acessará o Vite em `http://127.0.0.1:5173/`.
-2. O frontend fará chamadas relativas a `/api/v1/`.
-3. Um futuro proxy de desenvolvimento encaminhará as chamadas ao Django em
-   `http://127.0.0.1:8000/`.
-4. A integração precisará validar Host, Origin, cookies e CSRF conforme
-   a autenticação por sessão e o contexto de organização existentes.
+Comandos executados separadamente, com código de saída capturado:
 
-O proxy do Vite será exclusivo de desenvolvimento. Produção precisará de
-configuração própria de hospedagem/proxy, preferencialmente na mesma origem.
-Esta F1 não altera CORS, SameSite, CSRF, autenticação, tenant ou settings Django.
+| Diretório | Comando                                              | Saída | Resultado                                                                                 |
+| --------- | ---------------------------------------------------- | ----- | ----------------------------------------------------------------------------------------- |
+| frontend  | `npm.cmd ci`                                         | 0     | Instalação reproduzível, zero vulnerabilidades reportadas; manifesto/lockfile preservados |
+| frontend  | `npm.cmd ls --depth=0`                               | 0     | Dependências da F1 preservadas                                                            |
+| frontend  | `npm.cmd run typecheck`                              | 0     | Aplicação, testes, setup e configuração                                                   |
+| frontend  | `npm.cmd run lint`                                   | 0     | Sem erros ou avisos                                                                       |
+| frontend  | `npm.cmd run format:check`                           | 0     | Formatação aprovada                                                                       |
+| frontend  | `npm.cmd run test`                                   | 0     | **91 testes em 4 arquivos aprovados**                                                     |
+| frontend  | `npm.cmd run build`                                  | 0     | Build de produção gerado                                                                  |
+| raiz      | executor + `backend\manage.py check`                 | 0     | Nenhum problema                                                                           |
+| raiz      | executor + `backend\manage.py showmigrations --plan` | 0     | Todas aplicadas; nenhuma migration executada                                              |
+| raiz      | executor + pytest dos dois arquivos de auth acima    | 0     | **24 testes aprovados**                                                                   |
+| raiz      | executor + pytest global acima, uma execução         | 0     | **702 testes aprovados**                                                                  |
 
-## Validação executada em 12/09/2026
+Também foi executado `npm.cmd run format`, com saída 0, somente no frontend.
+Um aviso inicial de lint sobre ref no cleanup foi corrigido, e a verificação
+afetada passou. Comandos Git/executor inicialmente bloqueados pela identidade
+do sandbox foram repetidos fora dele, sem alterar configuração global.
 
-Ambiente efetivamente testado: Windows x64, Node 24.21.0 e npm 11.19.0,
-com as versões de dependências da tabela acima. Todos os comandos abaixo
-foram executados individualmente em `frontend/`, usando `npm.cmd`:
+Build: 20 módulos, HTML 0,46 kB, CSS 0,78 kB e JavaScript 224,50 kB
+(70,46 kB gzip para JavaScript), conforme o Vite.
+Backend: Python 3.14.7, Django 5.2.17, pytest 9.1.1.
+Não foi gerada cobertura nesta etapa; 97% continua sendo dado histórico.
 
-| Comando                | Saída | Resultado                                               |
-| ---------------------- | ----- | ------------------------------------------------------- |
-| `npm install`          | 0     | Primeiro lockfile gerado                                |
-| `npm run format`       | 0     | Somente arquivos do frontend                            |
-| `npm ci`               | 0     | Manifesto e lockfile preservados por comparação SHA-256 |
-| `npm ls --depth=0`     | 0     | Dependências diretas nas versões selecionadas           |
-| `npm run typecheck`    | 0     | Aplicação, teste, setup e configuração TypeScript       |
-| `npm run lint`         | 0     | Sem erros ou avisos                                     |
-| `npm run format:check` | 0     | Formatação aprovada                                     |
-| `npm run test`         | 0     | 1 arquivo e 1 teste aprovados                           |
-| `npm run build`        | 0     | HTML, CSS e JavaScript em `dist/`                       |
+### Smoke real e procedimento de conferência
 
-Instalação e reinstalação reportaram zero vulnerabilidades no npm.
-O build final gerou HTML de 0,47 kB, CSS de 0,51 kB e JavaScript de 219,96 kB
-(68,76 kB gzip para o JavaScript), conforme os tamanhos exibidos pelo Vite.
+Foi usado Chrome 152.0.7977.83 headless com perfil temporário sem sessão
+pessoal, controlado pelo protocolo do navegador com Node nativo.
+Não foram instalados Playwright, Cypress ou outras bibliotecas.
 
-Os scripts `dev` e `preview` foram iniciados nos endereços documentados;
-ambos responderam HTTP 200. A configuração resolvida confirmou raiz e
-workspace em `frontend/`, incluindo `envDir`, e `fs.allow` restrito a essa pasta.
-Requisições HEAD a arquivos existentes da raiz e do backend retornaram 403.
-A política resolvida também negou os caminhos privados de `.local/`, sem ler
-seu conteúdo. Um caminho inexistente usado inicialmente como sonda recebeu
-o fallback HTML da SPA; ele foi substituído por verificações apropriadas.
+Com Django e o servidor escolhido prontos:
 
-Chrome 152.0.7977.83, headless, validou dev e preview em 360×800 e 1440×900:
-React renderizado, conteúdo e papéis acessíveis esperados, `lang="pt-BR"`,
-título correto, ausência de overflow horizontal e de erros de console/runtime,
-sem recursos externos, Fetch/XHR ou chamadas de API. As quatro capturas foram
-inspecionadas visualmente. O primeiro smoke detectou 404 de `favicon.ico`;
-o HTML passou a declarar um favicon vazio embutido (`data:,`), e o build,
-a formatação e os smoke tests afetados foram repetidos com sucesso.
-Os helpers usaram o Node portátil preparado e o Chrome instalado, sem instalar
-ferramentas E2E.
-Os servidores e o navegador temporários foram encerrados.
+1. Abra dev e preview em 360×800 e 1440×900. Confira main, h1, estágio F2,
+   idioma pt-BR, sessão anônima, ausência de overflow e erros JavaScript.
+2. Na rede, confirme CSRF 200 JSON e /me 403 JSON com o contrato acima,
+   sem fallback HTML. Inspecione apenas presença/atributos do cookie,
+   sem registrar valores, Cookie ou Set-Cookie.
+3. Após confirmar no código que JSON `{}` não autentica, envie uma sonda
+   POST login com esse corpo e sem token: deve rejeitar CSRF.
+   Obtenha CSRF na mesma sessão do navegador e repita `{}` com X-CSRFToken:
+   deve retornar os erros de email e password acima. Não compare o token
+   mascarado com o cookie e não registre seu valor.
+4. Bloqueie somente `*/api/v1/*` na rede do navegador e recarregue.
+   Confira a mensagem segura e o botão Tentar novamente, sem anonimato
+   ou repetição automática. Desbloqueie e acione retry; a consulta deve
+   recuperar o estado. Não interrompa servidores preexistentes.
 
-Não foram executados Python, Django, a suíte do backend ou cobertura frontend.
-Os 702 testes e 97% de cobertura do backend são números históricos relatados,
-não uma revalidação desta F1. Integração com a API e produção continuam fora
-do escopo; o modo `test:watch` não foi exercitado nesta validação.
+Esse procedimento passou em dev e preview. Em cada origem, houve uma
+sonda POST sem token (403 HTML) e outra com token válido (400 JSON com
+os dois campos obrigatórios). O cookie csrftoken estava presente em
+127.0.0.1, Path /, SameSite=Lax, Secure=false e HttpOnly=false.
+Não houve cookie sessionid. Nenhum valor de token/cookie foi registrado.
+
+As quatro capturas de layout e duas de indisponibilidade foram
+inspecionadas visualmente. Foco por teclado ficou visível, retry recuperou
+a tela e não houve exceção JavaScript não tratada nem console.error da
+aplicação. Rejeições HTTP 403/400 e bloqueios de rede esperados foram
+separados de erros JavaScript. Somente endpoints de auth foram consultados.
+
+O helper de navegador precisou ajustar a classificação de URLs para não
+confundir o módulo client.ts com chamada API e usar Tab real na checagem
+de foco. As verificações afetadas foram repetidas, preservando as sondas
+POST já executadas, e o smoke final terminou com saída 0.
+
+A configuração resolvida confirmou proxy compartilhado pelo preview e
+filesystem restrito. HEAD para arquivos existentes da raiz e backend
+retornou 403. A política também negou os caminhos privados de .local
+sem ler seu conteúdo.
+
+O ramo autenticado foi validado por mocks com identidade fictícia.
+Não havia sessão de teste autorizada para validá-lo no navegador;
+nenhuma conta foi criada ou senha alterada. Login completo, rotação
+pós-login, logout e produção não foram validados e estão fora desta entrega.
+O modo test:watch não foi exercitado; o comando padrão executou e encerrou.
+
+Vite dev e preview encerraram com saída 0. Django foi interrompido
+intencionalmente após o smoke (saída 1 do terminal). A conferência final
+não encontrou listeners nas portas 8000, 5173 ou 4173 nem processos do
+Chrome com o perfil temporário da F2. Servidores preexistentes não foram
+interrompidos.

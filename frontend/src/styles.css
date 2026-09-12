@@ -42,3 +42,27 @@ p {
 .description {
   font-size: 1.125rem;
 }
+
+section {
+  margin-top: 2rem;
+  overflow-wrap: anywhere;
+}
+
+button {
+  padding: 0.625rem 1rem;
+  border: 1px solid #555;
+  border-radius: 0.25rem;
+  color: #252525;
+  background: #fff;
+  font: inherit;
+  cursor: pointer;
+}
+
+button:hover {
+  background: #eee;
+}
+
+button:focus-visible {
+  outline: 3px solid #2456a6;
+  outline-offset: 3px;
+}

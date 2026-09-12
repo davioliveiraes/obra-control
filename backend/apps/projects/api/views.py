@@ -19,6 +19,7 @@ from apps.organizations.permissions import (
     HasActiveOrganization,
     IsOrganizationAdminOrReadOnly,
 )
+from apps.progress.models import StageProgressEntry
 
 from ..models import Project
 from .pagination import ProjectPagination
@@ -101,7 +102,7 @@ invalid_response = OpenApiResponse(
     destroy=extend_schema(
         description=(
             "Exclui definitivamente obra da organização ativa. "
-            "RDOs, despesas e receitas, inclusive canceladas, impedem a exclusão (409). "
+            "Progresso físico, RDOs, despesas e receitas, inclusive canceladas, impedem a exclusão (409). "
             "Exige role OWNER ou ADMIN e CSRF."
         ),
         parameters=[csrf_header],
@@ -144,7 +145,7 @@ class ProjectViewSet(ModelViewSet):
         except ProtectedError as error:
             # Only translate known linked records; don't hide other errors.
             if not error.protected_objects or any(
-                not isinstance(obj, (Expense, Revenue, DailyReport))
+                not isinstance(obj, (Expense, Revenue, DailyReport, StageProgressEntry))
                 for obj in error.protected_objects
             ):
                 raise

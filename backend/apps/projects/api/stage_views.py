@@ -1,5 +1,5 @@
 from django.db import transaction
-from django.db.models.deletion import RestrictedError
+from django.db.models.deletion import ProtectedError, RestrictedError
 from django.shortcuts import get_object_or_404
 from django.utils.decorators import method_decorator
 from django.views.decorators.cache import never_cache
@@ -19,6 +19,7 @@ from apps.organizations.permissions import (
     HasActiveOrganization,
     IsOrganizationAdminOrReadOnly,
 )
+from apps.progress.models import StageProgressEntry
 
 from ..models import Project, ProjectStage
 from .stage_serializers import ProjectStageSerializer
@@ -87,7 +88,7 @@ invalid_response = OpenApiResponse(
         },
     ),
     destroy=extend_schema(
-        description="Exclui somente uma etapa sem filhos. Exige OWNER/ADMIN e CSRF.",
+        description="Exclui somente uma etapa sem filhos e sem registros de progresso. Exige OWNER/ADMIN e CSRF.",
         parameters=[csrf_header],
         responses={
             204: OpenApiResponse(description="Etapa excluída; sem corpo."),
@@ -95,7 +96,7 @@ invalid_response = OpenApiResponse(
             404: not_found_response,
             409: OpenApiResponse(
                 response=OpenApiTypes.OBJECT,
-                description="A etapa possui subetapas e não pode ser excluída.",
+                description="A etapa possui subetapas ou registros de progresso e não pode ser excluída.",
             ),
         },
     ),
@@ -155,6 +156,18 @@ class ProjectStageViewSet(ModelViewSet):
         except RestrictedError:
             return Response(
                 {"detail": "A etapa possui subetapas e não pode ser excluída."},
+                status=status.HTTP_409_CONFLICT,
+            )
+        except ProtectedError as error:
+            if not error.protected_objects or any(
+                not isinstance(obj, StageProgressEntry)
+                for obj in error.protected_objects
+            ):
+                raise
+            return Response(
+                {
+                    "detail": "A etapa possui registros vinculados e não pode ser excluída."
+                },
                 status=status.HTTP_409_CONFLICT,
             )
         return Response(status=status.HTTP_204_NO_CONTENT)

@@ -63,6 +63,7 @@ INSTALLED_APPS = [
     "apps.budgets.apps.BudgetsConfig",
     "apps.finances.apps.FinancesConfig",
     "apps.daily_reports.apps.DailyReportsConfig",
+    "apps.progress.apps.ProgressConfig",
 ]
 
 MIDDLEWARE = [

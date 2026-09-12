@@ -718,7 +718,7 @@ somente lê (GET/HEAD/OPTIONS). Escrita exige Session Authentication + CSRF; rol
 insuficiente retorna 403, revogação de Membership interrompe a próxima request e
 superuser não tem bypass. Não há role/tenant persistido adicionalmente na session.
 
-Project com RDO, Expense ou Revenue não pode ser excluído: a API trata somente
+Project com RDO, Expense, Revenue ou progresso físico não pode ser excluído: a API trata somente
 `ProtectedError` dos vínculos conhecidos e retorna 409 com
 `{"detail": "A obra possui registros vinculados e não pode ser excluída."}`.
 A mensagem substitui a referência anterior exclusivamente financeira. Excluir
@@ -733,6 +733,72 @@ associações inconsistentes automaticamente.
 Planning, Budget, Expense, Revenue e os dois summaries permanecem independentes.
 Sem fotos/anexos, equipes, horas, equipamentos, materiais consumidos, progresso,
 assinatura/aprovação, auditoria completa, clima estruturado ou novas dependências.
+
+## Progresso físico por etapa (Etapa 17)
+
+`apps.progress.StageProgressEntry` registra um histórico explícito de percentual
+informado para uma ProjectStage. Campos: `id` BigAutoField, `stage` obrigatório
+(`PROTECT`, `stage.progress_entries`), `progress_date`, `progress_percentage`,
+`notes` opcional e timestamps. Project/Organization são herdados pela Stage,
+sem campos duplicados, percentual persistido na EAP ou cache do estado atual.
+
+`progress_percentage` usa DecimalField(5, 2), de `0.00` a `100.00`, inclusive.
+A API retorna string decimal com duas casas e rejeita limites excedidos,
+precisão excessiva, NaN e Infinity. PostgreSQL protege o intervalo com
+`progress_percentage_range` e a unicidade Stage/data com
+`progress_stage_date_unique`. Há validação antes da escrita; em colisões
+concorrentes de POST/PATCH, somente a violação dessa UNIQUE é traduzida para
+400 após rollback. Outros erros de integridade não são mascarados.
+
+`progress_date` é a data operacional informada, não `created_at`. Lançamentos
+retroativos e futuros são aceitos, sem regra dependente de hoje. O progresso
+não precisa ser monotônico: `70.00` seguido de `68.00` é permitido como revisão.
+
+Endpoints sob `/api/v1/projects/{project_id}/stages/{stage_id}/progress/`:
+
+- `GET/POST /`: lista o histórico ou cria apontamento na Stage validada da URL.
+- `GET/PATCH/DELETE /{id}/`: consulta, altera ou exclui explicitamente o apontamento.
+
+Payload de criação:
+
+```json
+{
+  "progress_date": "2026-09-09",
+  "progress_percentage": "62.50",
+  "notes": "Avanço medido em campo."
+}
+```
+
+PATCH pode alterar somente data, percentual e notes. Stage, Project e Organization
+não aparecem no contrato de payload/resposta; campos extras de contexto são
+ignorados, sem mover o registro. A resposta acrescenta apenas id e timestamps.
+Sem PUT, filtros, ordering dinâmico, latest/current ou endpoints de resumo.
+Paginação fixa de 25 registros, ordem `-progress_date, -id`; page_size é ignorado.
+
+A resolução segue Organization ativa → Project → ProjectStage → Entry. IDs
+cross-tenant, cross-project e cross-stage retornam 404. As três permissions
+existentes são reutilizadas: OWNER/ADMIN escrevem, MEMBER somente lê
+(GET/HEAD/OPTIONS). Escritas exigem Session Authentication + CSRF; Membership
+revogada bloqueia a próxima request. Não há bypass para superuser nem cache
+compartilhado de contexto entre requests.
+
+Excluir Entry preserva Stage e Project. Stage com progresso retorna 409:
+`{"detail": "A etapa possui registros vinculados e não pode ser excluída."}`.
+O 409 de Stage com children permanece; a hierarquia continua usando RESTRICT.
+Project com progresso em qualquer etapa também retorna 409, mantendo a mensagem
+geral de registros vinculados. Sem vínculos impeditivos, as exclusões anteriores
+continuam funcionando. Os testes comprovam ausência de deletes/SET_NULL parciais.
+
+Migration: `progress.0001_initial`. `StageProgressEntryFactory` cria somente a
+Stage necessária, usa data determinística, `Decimal("25.00")` e notes vazias;
+não cria Planning, Budget, Expense, Revenue ou RDO implicitamente.
+
+RDO não cria progresso automaticamente e Planning não calcula percentual por
+datas. Progresso não altera Budget, Expense, Revenue, Cost Summary ou Financial
+Summary. Parent e children não recebem valores derivados entre si: sem roll-up,
+pesos, progresso global do Project, progresso planejado, curva S, earned value,
+quantidade executada, integração automática com RDO, aprovação, assinatura,
+auditoria, dashboard ou novas dependências.
 
 ## Qualidade e testes
 

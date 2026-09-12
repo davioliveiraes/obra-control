@@ -14,6 +14,10 @@ api_v1_urlpatterns = [
         "projects/<int:project_id>/daily-reports/",
         include("apps.daily_reports.api.urls"),
     ),
+    path(
+        "projects/<int:project_id>/stages/<int:stage_id>/progress/",
+        include("apps.progress.api.urls"),
+    ),
     path("projects/", include("apps.projects.api.urls")),
 ]
 

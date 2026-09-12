@@ -1,5 +1,8 @@
 # ObraControl
 
+O frontend React + TypeScript está em [`frontend/`](frontend/README.md).
+A F1 prepara a fundação técnica e pode ser executada sem o backend ligado.
+
 Fundação técnica do backend do ObraControl, um monólito modular em Django com
 API REST e PostgreSQL. Inclui a fundação de identidade (`accounts.User`) e os
 vínculos entre usuários e organizações, com autenticação web por sessão e CSRF.

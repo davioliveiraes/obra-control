@@ -1,6 +1,7 @@
 # Local environment and secrets
 .venv/
 .env
+/.local/
 
 # Python
 __pycache__/

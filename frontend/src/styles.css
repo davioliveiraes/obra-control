@@ -1,0 +1,44 @@
+:root {
+  font-family: system-ui, sans-serif;
+  line-height: 1.6;
+  color: #252525;
+  background: #f7f7f5;
+  font-synthesis: none;
+  text-rendering: optimizeLegibility;
+  -webkit-font-smoothing: antialiased;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+main {
+  width: min(100%, 46rem);
+  margin: clamp(3rem, 12vh, 8rem) auto;
+  padding: clamp(1.5rem, 6vw, 3rem);
+}
+
+h1 {
+  margin: 0.25rem 0 1rem;
+  font-size: clamp(2rem, 7vw, 3.5rem);
+  line-height: 1.15;
+  letter-spacing: -0.03em;
+  overflow-wrap: anywhere;
+}
+
+p {
+  margin: 0 0 1rem;
+}
+
+.stage {
+  color: #555;
+  font-size: 0.875rem;
+}
+
+.description {
+  font-size: 1.125rem;
+}

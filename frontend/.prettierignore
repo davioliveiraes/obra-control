@@ -1,0 +1,11 @@
+node_modules/
+dist/
+.vite/
+.vitest/
+.cache/
+coverage/
+*.tsbuildinfo
+package-lock.json
+.env
+.env.*
+*.local

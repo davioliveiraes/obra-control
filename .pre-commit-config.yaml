@@ -11,5 +11,12 @@ repos:
     hooks:
       - id: check-merge-conflict
       - id: check-yaml
+        exclude: ^docker-compose\.dev\.yml$
+      - id: check-yaml
+        name: check yaml (Compose extensions)
+        files: ^docker-compose\.dev\.yml$
+        # Parse Compose tags without constructing them. Validate the combined
+        # Compose model separately with scripts/compose-dev.ps1 config --quiet.
+        args: [--unsafe]
       - id: end-of-file-fixer
       - id: trailing-whitespace

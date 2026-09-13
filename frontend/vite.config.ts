@@ -3,6 +3,8 @@ import react from "@vitejs/plugin-react";
 import { defineConfig } from "vitest/config";
 
 const frontendRoot = fileURLToPath(new URL(".", import.meta.url));
+const apiProxyTarget =
+  process.env.DEV_API_PROXY_TARGET ?? "http://127.0.0.1:8000";
 
 export default defineConfig({
   root: frontendRoot,
@@ -13,7 +15,7 @@ export default defineConfig({
     strictPort: true,
     proxy: {
       "/api/v1/": {
-        target: "http://127.0.0.1:8000",
+        target: apiProxyTarget,
         changeOrigin: false,
       },
     },
@@ -21,6 +23,10 @@ export default defineConfig({
       strict: true,
       allow: [frontendRoot],
     },
+    watch:
+      process.env.DEV_VITE_POLLING === "1"
+        ? { usePolling: true, interval: 500 }
+        : undefined,
   },
   preview: {
     host: "127.0.0.1",

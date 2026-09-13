@@ -9,6 +9,10 @@ positiva no navegador ainda depende de uma conta local de teste autorizada.**
 Os resultados atuais estão na seção da F3; o fechamento da F2 foi preservado
 integralmente como registro histórico.
 
+A F4 acrescenta a execução integrada com Docker Desktop. Os comandos completos,
+pré-requisitos e carregamento privado estão no [README da raiz](../README.md#desenvolvimento-integrado-com-docker-f4).
+O procedimento local com Node portátil abaixo permanece disponível.
+
 A integração real **precisa do Django ligado**. Os testes frontend usam
 mocks locais de fetch e continuam independentes do backend.
 Inicie Django e aguarde a mensagem de prontidão antes de testar a integração.
@@ -222,8 +226,10 @@ global entre camelCase e snake_case.
 ## Proxy, Host, Origin e cookies
 
 O navegador chama caminhos relativos `/api/v1/...` na origem do Vite.
-Somente esse prefixo é encaminhado a **http://127.0.0.1:8000**,
-preservando o caminho e as barras finais, sem rewrite.
+Somente esse prefixo é encaminhado a **http://127.0.0.1:8000** no modo local.
+No Docker, o processo servidor recebe **DEV_API_PROXY_TARGET=http://backend:8000**.
+O caminho e as barras finais são preservados, sem rewrite. Essa variável não
+usa prefixo VITE_ e não é incorporada ao fetch do navegador.
 
 `changeOrigin: false` mantém o Host recebido pelo Vite.
 Origin também é preservado. Na implementação instalada do Vite 8.3.0,
@@ -705,3 +711,104 @@ smoke, com saída 1 do terminal. A conferência final encontrou as três portas
 livres e nenhum processo do Chrome desse perfil. Somente o perfil temporário
 da F3 foi removido, após validar seu caminho; nenhum processo ou perfil do
 usuário foi encerrado.
+
+## Ambiente integrado F4 — 13/09/2026
+
+Docker Desktop 4.84.0, Engine 29.6.2 e Compose 5.3.1 foram conferidos no
+contexto local desktop-linux (named pipe do Docker Desktop, sem servidor remoto).
+O Git começou limpo em main, HEAD 01fc8fe73e0ad226a8f5e672d9de0099a8a4b5fc,
+alinhado à referência local origin/main; não houve consulta ao remoto.
+
+Os comandos completos de build, execução, logs, parada, testes e diagnóstico
+ficam no [README da raiz](../README.md#desenvolvimento-integrado-com-docker-f4).
+Use o wrapper scripts/compose-dev.ps1 para carregar a configuração existente;
+ele não grava outro arquivo privado e não exige exportar senhas manualmente.
+A venv Windows existente atende apenas esse carregamento. Os comandos dos
+serviços e os testes abaixo utilizaram os runtimes Linux das imagens.
+
+### Verificações executadas na F4
+
+Todas partiram da raiz. Cada linha abaixo foi executada separadamente como
+`.\scripts\compose-dev.ps1 exec -T <serviço> <comando>`, com código de saída
+capturado imediatamente. O README da raiz apresenta cada comando completo.
+
+| Serviço  | Comando interno                                                | Saída | Resultado                                                |
+| -------- | -------------------------------------------------------------- | ----- | -------------------------------------------------------- |
+| frontend | npm ls --depth=0                                               | 0     | Dependências preservadas; Node 24.21.0 / npm 11.19.0     |
+| frontend | npm run typecheck                                              | 0     | Aplicação, testes e configuração aprovados               |
+| frontend | npm run lint                                                   | 0     | Sem erros ou avisos                                      |
+| frontend | npm run format:check                                           | 0     | Formatação aprovada após documentação                    |
+| frontend | npm run test                                                   | 0     | 144 testes em 5 arquivos aprovados no Linux              |
+| frontend | npm run build                                                  | 0     | 21 módulos; JS 229,76 kB / 71,87 kB gzip                 |
+| backend  | python -m pip check                                            | 0     | Dependências compatíveis                                 |
+| backend  | python backend/manage.py check                                 | 0     | Nenhum problema                                          |
+| backend  | python backend/manage.py showmigrations --plan                 | 0     | 30 migrations marcadas como aplicadas; nenhuma executada |
+| backend  | python -m pytest --ds=config.settings.test -p no:cacheprovider | 0     | 702 testes aprovados em 379,03 s                         |
+
+O banco de teste foi conferido antes da suíte: PostgreSQL separado, prefixo
+test_ e ausência de mirror. O runner fez a criação/limpeza normais do banco
+de teste. A execução completa confirmou config.settings.test (from option),
+incluindo autenticação/CSRF, concorrência e progress-summary. Cobertura não
+foi medida; as contagens históricas das outras etapas não substituíram estes testes.
+
+O primeiro encaminhamento de -p foi barrado pela interpretação de parâmetros
+comuns do PowerShell, antes de pytest. O wrapper passou a encaminhar args como
+script simples. Uma execução seguinte foi interrompida com saída 2 ao detectar
+settings de desenvolvimento herdados do serviço (521 testes já aprovados,
+sem considerá-la concluída). A opção --ds explícita corrigiu a seleção;
+houve uma execução global completa aprovada, sem alterar settings ou testes.
+
+O build das imagens e config --quiet passaram com saída 0. npm ci usou o lock
+existente e reportou zero vulnerabilidades; o aviso de npm 12 disponível não
+motivou atualização. Pip avisou sobre instalação como root durante o build
+e cache indisponível no home do usuário de serviço durante pip check; os
+comandos passaram e o runtime permaneceu sem root. Nenhuma dependência ou
+lockfile do repositório foi alterado.
+
+### Navegador, atualização e persistência
+
+Chrome 152.0.7977.83, perfil temporário sem sessão pessoal, acessou
+127.0.0.1:5173 com Django/PostgreSQL reais no Compose. Em 360×800 e 1440×900,
+React apresentou main, h1 e formulário anônimo, sem overflow. As capturas
+de layout, falha controlada e atualização temporária foram inspecionadas.
+
+| Sonda real pelo proxy                          | Resultado                                |
+| ---------------------------------------------- | ---------------------------------------- |
+| GET /api/v1/auth/csrf/                         | 200 JSON, csrfToken válido e no-store    |
+| GET /api/v1/auth/me/                           | 403 JSON com contrato anônimo exato      |
+| POST /api/v1/auth/login/ com {} sem token      | 403 HTML, rejeição CSRF                  |
+| Mesmo POST com token válido e cookies naturais | 400 JSON com email/password obrigatórios |
+
+Nenhuma sonda forneceu credenciais ou autenticou conta. O cookie CSRF teve
+Path /, SameSite=Lax, Secure=false e HttpOnly=false; valores de tokens/cookies,
+headers sensíveis e HAR não foram registrados. A API retornou seus contratos,
+sem fallback HTML da SPA. Houve zero exceções JavaScript não tratadas; rejeições
+HTTP esperadas foram distinguidas de erros da aplicação. Bloquear apenas a
+API no navegador produziu erro seguro; liberar e usar Tentar novamente
+recuperou a tela sem reload completo.
+
+A primeira alteração visual não chegou ao navegador pelos eventos do mount
+Windows (smoke com saída 1), e o helper restaurou o arquivo. Com polling de
+500 ms somente no Docker, alteração e restauração apareceram sem rebuild
+nem reload da página; o smoke final saiu com 0. O arquivo App.tsx voltou ao
+conteúdo original. O modo local teve proxy, host, strictPort, fs.allow restrito,
+herança do proxy no preview e ausência de polling conferidos separadamente.
+
+O Django recarregou após mudança temporária somente do timestamp de urls.py:
+o processo filho mudou e o log registrou changed, reloading. Conteúdo e
+timestamp foram preservados, sem alteração de lógica ou novo endpoint.
+
+Frontend/backend foram parados e iniciados com comandos direcionados e saída 0.
+O db permaneceu em execução, com o mesmo ID d90a8cddb8dc409b59555d69c3eee89c8d69ffba5d0b72d8c11b50463c0dd324,
+volume obra-control_postgres_data e mount /var/lib/postgresql.
+O processo PostgreSQL existente confirmou versão 18.6 e PGDATA
+/var/lib/postgresql/18/docker, dentro do mesmo volume. A identidade
+do banco/usuário foi comparada sem exibir valores, antes no Windows e depois
+no Linux, inclusive após reiniciar somente a aplicação. O projeto e a rede
+existentes foram preservados; não houve recriação do db ou migrations de desenvolvimento.
+
+Os serviços permanecem disponíveis em 127.0.0.1:5173 e 127.0.0.1:8000 para
+acompanhamento. Pare apenas a aplicação com scripts/compose-dev.ps1 stop
+frontend backend. A F3 autenticada continua pendente: nenhuma criação de
+conta, login válido, rotação pós-login ou logout autenticado foi comprovado
+nesta F4. Produção também não foi validada.

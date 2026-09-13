@@ -1,81 +1,189 @@
 # ObraControl
 
-O frontend React + TypeScript está em [`frontend/`](frontend/README.md).
-A F2 integra a sessão à API local e precisa do backend ligado; os testes frontend
-continuam independentes do Django.
+ERP SaaS B2B de gestão de obras, com backend Django/PostgreSQL e
+[frontend React + TypeScript](frontend/README.md). A F3 implementa login/logout
+por sessão; sua validação autenticada real ainda está pendente. A F4 oferece
+o ambiente integrado abaixo, exclusivamente para desenvolvimento local.
 
-Fundação técnica do backend do ObraControl, um monólito modular em Django com
-API REST e PostgreSQL. Inclui a fundação de identidade (`accounts.User`) e os
-vínculos entre usuários e organizações, com autenticação web por sessão e CSRF.
-Customers e Projects (obras) possuem isolamento explícito por organização na API.
-Possuem também RBAC mínimo por Membership. Não há isolamento automático global
-de models/querysets.
+## Desenvolvimento integrado com Docker (F4)
 
-## Requisitos
+Pré-requisitos deste workspace: Windows/PowerShell, Docker Desktop em modo
+Linux, contexto local `desktop-linux`, Compose com suporte a `!override`
+(2.24.4 ou superior), Git e o ambiente local já preparado:
+`.venv\Scripts\python.exe`, `.local\dev_local.py` e a configuração privada
+existente. Não recrie esse ambiente ou copie suas credenciais para o frontend.
+O wrapper utiliza o executor existente; portanto a venv Windows é necessária
+para carregar a configuração, embora os serviços usem Python/Node Linux.
 
-- Python 3.14
-- Docker com Docker Compose
-- Git
+A composição usa `docker-compose.yml` + `docker-compose.dev.yml`, sempre
+com o projeto **obra-control**. O override substitui mounts/portas apenas
+do backend e acrescenta frontend. O serviço db do arquivo original não muda.
 
-## Ambiente local
+### Iniciar e acompanhar
 
-Crie o ambiente virtual na raiz do repositório:
-
-```powershell
-py -3.14 --version
-py -3.14 -m venv .venv
-$Python = ".\.venv\Scripts\python.exe"
-```
-
-Use a distribuição oficial CPython para Windows. Distribuições MSYS2 usam uma
-ABI diferente e não são compatíveis com todos os wheels binários desta stack.
-
-Instale as dependências sem depender da ativação do ambiente:
+Na raiz, com o PostgreSQL existente em execução:
 
 ```powershell
-& $Python -m pip install --upgrade pip
-& $Python -m pip install -r backend\requirements\dev.txt
+Set-Location C:\Users\Davil\obra-control
+.\scripts\compose-dev.ps1 config --quiet
+.\scripts\compose-dev.ps1 build backend frontend
+.\scripts\compose-dev.ps1 up -d --no-deps --wait --wait-timeout 120 backend frontend
+.\scripts\compose-dev.ps1 ps
 ```
 
-Copie o arquivo de exemplo e substitua todos os valores locais necessários:
+No uso diário, o comando `up` acima basta, sem rebuild enquanto os manifestos
+e Dockerfiles não mudarem. `--no-deps` preserva o container db já existente.
+Se ele estiver parado, inicie **o mesmo container**, sem recriá-lo:
 
 ```powershell
-Copy-Item .env.example .env
+docker --context desktop-linux start obra-control-db-1
 ```
 
-O Docker Compose lê `.env` automaticamente. O Django usa diretamente
-`os.environ`; ao executar fora dos containers, exporte as variáveis no processo
-ou utilize os fallbacks explicitamente locais de `config.settings.development`.
+Abra **http://127.0.0.1:5173/** para acompanhar a aplicação.
+A API também fica em **http://127.0.0.1:8000/api/v1/**. A raiz / do Django
+não é a aplicação frontend. A ausência de sessão apresenta o formulário;
+GET /me retorna o 403 JSON esperado. Isso não comprova login válido.
 
-## PostgreSQL e Django
-
-Inicie somente o PostgreSQL:
+Logs e parada somente da aplicação:
 
 ```powershell
-docker compose up -d db
-docker compose ps
+.\scripts\compose-dev.ps1 logs --follow --tail 100 backend frontend
+.\scripts\compose-dev.ps1 stop frontend backend
 ```
 
-O exemplo publica o PostgreSQL em `localhost:5433` para evitar conflito com
-instalações locais que já usem 5432. Entre os containers, o backend sempre usa
-o endereço interno `db:5432`.
+Ctrl+C encerra o acompanhamento dos logs; `stop` para os serviços indicados.
+Para voltar, use o mesmo `up -d --no-deps --wait --wait-timeout 120 backend frontend`.
+Não execute down -v, volume rm, prune ou limpeza global.
 
-Execute o backend localmente:
+### Rede, dados e configuração privada
+
+- Vite escuta em 0.0.0.0:5173 dentro do container, publicado somente em
+  127.0.0.1:5173. O navegador usa caminhos relativos /api/v1/.
+- O proxy servidor do Vite usa `DEV_API_PROXY_TARGET=http://backend:8000`,
+  sem rewrite e com `changeOrigin: false`. Host e Origin recebidos são
+  preservados; não houve alteração de cookies, CSRF, CORS ou autenticação.
+- Django escuta em 0.0.0.0:8000, publicado somente em 127.0.0.1:8000,
+  e alcança o PostgreSQL por **db:5432**, na rede **obra-control_default**.
+- PostgreSQL existente: **postgres:18-bookworm**, serviço **db**, container
+  **obra-control-db-1**, volume **obra-control_postgres_data** montado em
+  **/var/lib/postgresql**. A publicação encontrada, 5433:5432 em 0.0.0.0 e ::,
+  foi preservada. Esta F4 não restringiu nem ampliou essa publicação preexistente.
+  O processo existente confirmou PostgreSQL **18.6** e PGDATA
+  **/var/lib/postgresql/18/docker**, dentro desse mesmo volume.
+- O healthcheck existente do db continua ativo. O backend verifica conexão
+  PostgreSQL utilizável e resposta HTTP do Django; frontend verifica HTTP do Vite.
+  `up --wait` tem prazo explícito. Não há migrations, seeds ou contas no startup.
+
+`scripts/compose-dev.ps1` chama o executor Windows em memória para obter somente
+POSTGRES_DB, POSTGRES_USER, POSTGRES_PASSWORD, POSTGRES_PORT e os valores efetivos
+de DJANGO_SECRET_KEY, DJANGO_DEBUG, DJANGO_ALLOWED_HOSTS e CSRF_TRUSTED_ORIGINS.
+A chave efetiva de desenvolvimento permanece estável; não é regenerada.
+O Compose adapta apenas o destino do backend para db:5432. Nenhuma dessas
+variáveis privadas é enviada ao frontend.
+
+O wrapper captura a resposta sem exibir valores, restaura o ambiente do processo
+em finally, preserva o código de saída e fixa contexto/projeto/arquivos Compose.
+Não grava arquivo intermediário com credenciais nem monta .local nos containers.
+Use `config --quiet`; não publique a configuração expandida, Config.Env ou
+headers/cookies. O contexto remoto e overrides DOCKER_HOST/DOCKER_CONTEXT são
+recusados por esse wrapper local.
+
+### Código, dependências e atualização automática
+
+O backend usa o estágio `development` do Dockerfile existente, com
+**python:3.14.7-slim-bookworm** e instalação pelos requirements/base.txt e
+requirements/dev.txt. O estágio padrão `runtime` mantém o caminho anterior.
+O frontend usa **node:24.21.0-bookworm-slim**, com **npm 11.19.0** da imagem
+e `npm ci` a partir do package-lock.json existente.
+
+Os contextos de build são somente backend/ e frontend/, com .dockerignore.
+Não entram venv/node_modules Windows, .local, .git ou arquivos privados de ambiente.
+Serviços rodam como usuários sem root (`django` e `node`). Instalação pip
+durante o build usa root somente dentro da imagem.
+
+Há mounts de código somente para leitura, sem Compose Watch concorrente.
+Backend fica em /workspace/backend e recebe apenas pyproject.toml da raiz para
+a configuração dos testes. StatReloader do Django acompanha alterações Python.
+Frontend monta src, HTML e configurações em /app; node_modules, caches e dist
+permanecem no filesystem Linux do container, sem volume de dependências persistente.
+
+O teste no Windows mostrou ausência dos eventos esperados pelo Vite.
+Somente o Compose define **DEV_VITE_POLLING=1**, com intervalo de 500 ms.
+Isso aumenta consultas ao filesystem/uso de CPU; o modo local não usa polling
+por padrão. Alterações de src/CSS aparecem sem rebuild. Não use o código
+gerado em dist para acompanhar alterações de desenvolvimento.
+
+| Alteração | Ação |
+| --- | --- |
+| src/CSS/HTML frontend ou código Python backend | Salvar; atualização automática |
+| Configurações frontend já montadas | Salvar; reiniciar apenas frontend se a ferramenta exigir |
+| package.json, package-lock.json ou .npmrc | Rebuild frontend e up frontend com --no-deps |
+| requirements ou Dockerfile backend | Rebuild backend e up backend com --no-deps |
+| Dockerfile frontend ou novos caminhos fora dos mounts | Rebuild frontend; ajustar o mount quando necessário |
+| Compose ou configuração privada | Validar config --quiet e aplicar up somente backend/frontend |
+
+Exemplo após alteração de dependências frontend:
 
 ```powershell
-$env:DJANGO_SETTINGS_MODULE = "config.settings.development"
-& $Python backend\manage.py check
-& $Python backend\manage.py runserver
+.\scripts\compose-dev.ps1 build frontend
+.\scripts\compose-dev.ps1 up -d --no-deps --wait --wait-timeout 120 frontend
 ```
 
-Ou execute o ambiente de desenvolvimento completo em containers:
+Não é necessário apagar volume de node_modules: não existe esse volume.
+Não atualize os manifestos/locks apenas para usar Docker.
+
+### Verificações no Linux
+
+Execute os comandos separadamente, a partir da raiz:
 
 ```powershell
-docker compose up --build
+.\scripts\compose-dev.ps1 exec -T frontend npm ls --depth=0
+.\scripts\compose-dev.ps1 exec -T frontend npm run typecheck
+.\scripts\compose-dev.ps1 exec -T frontend npm run lint
+.\scripts\compose-dev.ps1 exec -T frontend npm run format:check
+.\scripts\compose-dev.ps1 exec -T frontend npm run test
+.\scripts\compose-dev.ps1 exec -T frontend npm run build
+.\scripts\compose-dev.ps1 exec -T backend python -m pip check
+.\scripts\compose-dev.ps1 exec -T backend python backend/manage.py check
+.\scripts\compose-dev.ps1 exec -T backend python backend/manage.py showmigrations --plan
+.\scripts\compose-dev.ps1 exec -T backend python -m pytest --ds=config.settings.test -p no:cacheprovider
 ```
 
-O backend fica disponível em `http://localhost:8000/`. A API usa `/api/v1/`, com
-os endpoints de autenticação em `/api/v1/auth/`.
+Capture `$LASTEXITCODE` imediatamente após cada comando. O wrapper retorna esse
+código. O argumento **--ds=config.settings.test é obrigatório aqui**: o serviço
+tem DJANGO_SETTINGS_MODULE de desenvolvimento, que prevaleceria sobre o ini.
+A suíte usa PostgreSQL de teste separado, com prefixo test_ e sem mirror;
+o runner cria e limpa somente esse banco. Não execute migrate no banco de
+desenvolvimento como parte dessa rotina. O build frontend fica em /app/dist.
+
+### Modo local fora do Docker e diagnóstico
+
+Pare somente frontend/backend no Compose antes de usar as mesmas portas localmente.
+No Windows, **todo comando Python é argumento do executor**:
+
+```powershell
+.\.venv\Scripts\python.exe .\.local\dev_local.py backend\manage.py check
+.\.venv\Scripts\python.exe .\.local\dev_local.py backend\manage.py runserver 127.0.0.1:8000 --noreload
+```
+
+Em outro terminal, siga o Node portátil e `npm.cmd run dev` de
+[frontend/README.md](frontend/README.md). O destino padrão do proxy continua
+http://127.0.0.1:8000. Dentro do container usa-se Python Linux, fornecido pela
+imagem e configurado pelo Compose; o executor Windows não roda nem é montado nele.
+
+Se 5173 ou 8000 estiverem ocupadas, identifique o processo antes de iniciar.
+Não encerre servidores alheios ou troque portas silenciosamente. `ps` e
+`logs --tail 100 backend frontend` pelo wrapper distinguem conflito de porta,
+falha de build, indisponibilidade de db e rejeição HTTP esperada.
+Um 200 HTML isolado não comprova React ou resposta da API.
+
+As tags oficiais e regras de override/polling foram conferidas em
+[Python](https://hub.docker.com/_/python),
+[Node](https://hub.docker.com/_/node),
+[merge do Compose](https://docs.docker.com/reference/compose-file/merge/) e
+[Vite](https://vite.dev/config/server-options#server-watch).
+Este ambiente não é produção. Não há validação de implantação, HTTPS,
+hardening ou fluxo autenticado real da F3 nesta entrega.
 
 ## Identidade e migrations (Etapa 2)
 
@@ -94,12 +202,12 @@ empresas fica em Membership, conforme a fundação SaaS descrita abaixo.
 Não há CRUD de usuários ou UserAdmin personalizado. A autenticação HTTP está
 descrita na Etapa 4 abaixo.
 
-Com as variáveis `POSTGRES_*` exportadas no processo (incluindo a porta **5433**
-do exemplo e a senha local escolhida), aplique as migrations explicitamente:
+Para manutenção de migrations explicitamente autorizada, fora desta F4,
+use o executor local a partir da raiz:
 
 ```powershell
-& $Python backend\manage.py showmigrations
-& $Python backend\manage.py migrate
+.\.venv\Scripts\python.exe .\.local\dev_local.py backend\manage.py showmigrations
+.\.venv\Scripts\python.exe .\.local\dev_local.py backend\manage.py migrate
 ```
 
 Em um banco legado que já tenha aplicado migrations com o User padrão, pare e
@@ -141,7 +249,7 @@ está nas anotações drf-spectacular junto às views. Para gerar e validar o Op
 (saída no terminal, sem adicionar endpoint de documentação):
 
 ```powershell
-& $Python backend\manage.py spectacular --validate --fail-on-warn
+.\.venv\Scripts\python.exe .\.local\dev_local.py backend\manage.py spectacular --validate --fail-on-warn
 ```
 
 Fluxo do cliente, preservando cookies entre requests:
@@ -876,16 +984,16 @@ migrations, dependências ou mudanças no schema do banco.
 ## Qualidade e testes
 
 Os testes de identidade, organizações, clientes e obras usam PostgreSQL e banco separado
-(`test_<POSTGRES_DB>`), removido pelo pytest-django ao terminar. Exporte as mesmas
-variáveis de conexão local antes de executar; o usuário do banco precisa de
-permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
+(`test_<POSTGRES_DB>`), removido pelo pytest-django ao terminar. O executor
+carrega a conexão local para estes comandos Windows; o usuário do banco precisa
+de permissão `CREATEDB`. Não aponte a suíte para um ambiente de produção.
 
 ```powershell
-& $Python -m ruff check backend
-& $Python -m ruff format --check backend
-& $Python -m pytest -p no:cacheprovider
-& $Python -m coverage run -m pytest -p no:cacheprovider
-& $Python -m coverage report -m
+.\.venv\Scripts\python.exe .\.local\dev_local.py -m ruff check backend
+.\.venv\Scripts\python.exe .\.local\dev_local.py -m ruff format --check backend
+.\.venv\Scripts\python.exe .\.local\dev_local.py -m pytest -p no:cacheprovider
+.\.venv\Scripts\python.exe .\.local\dev_local.py -m coverage run -m pytest -p no:cacheprovider
+.\.venv\Scripts\python.exe .\.local\dev_local.py -m coverage report -m
 ```
 
 As factories mínimas ficam em `backend/tests/factories`: `UserFactory`,
@@ -909,8 +1017,8 @@ evitar o conflito local de permissões já identificado, sem desabilitar testes.
 Instale e execute os hooks do Git:
 
 ```powershell
-& $Python -m pre_commit install
-& $Python -m pre_commit run --all-files
+.\.venv\Scripts\python.exe .\.local\dev_local.py -m pre_commit install
+.\.venv\Scripts\python.exe .\.local\dev_local.py -m pre_commit run --all-files
 ```
 
 ## Settings

@@ -7,3 +7,10 @@ __pycache__/
 .coverage
 htmlcov/
 .git/
+.env.*
+.local/
+node_modules/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.ruff_cache/

@@ -1,0 +1,63 @@
+# Local development override. The existing db service is intentionally unchanged.
+services:
+  backend:
+    image: obra-control-backend:f4-dev
+    build:
+      target: development
+    working_dir: /workspace
+    command: ["python", "backend/manage.py", "runserver", "0.0.0.0:8000"]
+    init: true
+    environment:
+      PGCONNECT_TIMEOUT: "5"
+    ports: !override
+      - "127.0.0.1:8000:8000"
+    volumes: !override
+      - ./backend:/workspace/backend:ro
+      - ./pyproject.toml:/workspace/pyproject.toml:ro
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - backend/manage.py
+        - shell
+        - --no-imports
+        - --verbosity
+        - "0"
+        - --command
+        - "from django.db import connection; import urllib.request; connection.ensure_connection(); assert connection.is_usable(); response = urllib.request.urlopen('http://127.0.0.1:8000/api/v1/auth/csrf/', timeout=3); assert response.status == 200"
+      interval: 15s
+      timeout: 10s
+      start_period: 30s
+      retries: 5
+
+  frontend:
+    image: obra-control-frontend:f4-dev
+    build:
+      context: ./frontend
+    init: true
+    environment:
+      DEV_API_PROXY_TARGET: http://backend:8000
+      # Windows bind mounts did not emit the events required by Vite in this setup.
+      DEV_VITE_POLLING: "1"
+    ports:
+      - "127.0.0.1:5173:5173"
+    depends_on:
+      backend:
+        condition: service_healthy
+    volumes:
+      - ./frontend/src:/app/src:ro
+      - ./frontend/index.html:/app/index.html:ro
+      - ./frontend/vite.config.ts:/app/vite.config.ts:ro
+      - ./frontend/tsconfig.json:/app/tsconfig.json:ro
+      - ./frontend/tsconfig.app.json:/app/tsconfig.app.json:ro
+      - ./frontend/tsconfig.node.json:/app/tsconfig.node.json:ro
+      - ./frontend/eslint.config.js:/app/eslint.config.js:ro
+      - ./frontend/.prettierrc.json:/app/.prettierrc.json:ro
+      - ./frontend/.prettierignore:/app/.prettierignore:ro
+      - ./frontend/README.md:/app/README.md:ro
+    healthcheck:
+      test: ["CMD", "node", "-e", "fetch('http://127.0.0.1:5173/').then(r => process.exit(r.ok ? 0 : 1)).catch(() => process.exit(1))"]
+      interval: 15s
+      timeout: 5s
+      start_period: 20s
+      retries: 5

@@ -6,6 +6,10 @@ ausência de sessão e falha com tentativa manual.
 
 A integração real **precisa do Django ligado**. Os testes frontend usam
 mocks locais de fetch e continuam independentes do backend.
+Inicie Django e aguarde a mensagem de prontidão antes de testar a integração.
+Na ausência de sessão, o 403 JSON de /me e a mensagem "Nenhuma sessão
+autenticada" são esperados. Se a API estiver indisponível, a tela oferece
+"Tentar novamente"; inicie o backend e acione esse botão.
 Não há formulário de login, logout, seleção de organização, rotas ou
 módulos empresariais. Não é necessário copiar arquivos de `.local/`,
 configurações privadas ou criar variáveis de ambiente para o frontend.
@@ -60,7 +64,8 @@ Nenhuma dependência foi adicionada ou atualizada na F2:
 
 A base oficial `react-ts` do Vite entregue na F1 foi preservada, sem novo
 scaffold. Manifesto e lockfile permaneceram idênticos, conferidos por
-SHA-256 antes e depois de `npm.cmd ci`.
+SHA-256 antes e depois de `npm.cmd ci` na implementação anterior da F2.
+Neste fechamento os hashes foram reconferidos, sem reinstalar dependências.
 
 ## Iniciar os serviços locais
 
@@ -283,6 +288,9 @@ Não há polling, retry automático, refresh, redirect ou logout automático.
 Nenhum token, identidade ou credencial é persistido em localStorage ou
 sessionStorage. A interface apresenta mensagens seguras, sem HTML da API,
 tracebacks, cookies ou headers sensíveis.
+Durante a consulta aparece "Verificando sessão…"; uma identidade válida
+apresenta "Sessão autenticada:" e o email recebido. A ausência de sessão
+e a falha de integração têm mensagens distintas, conforme a abertura deste README.
 
 ## Estrutura e testes
 
@@ -337,91 +345,152 @@ Regressão backend, na raiz e pelo executor:
 .\.venv\Scripts\python.exe .\.local\dev_local.py -m pytest -p no:cacheprovider
 ```
 
-## Validação da F2 em 12/09/2026
+## Fechamento da F2 — 12/09/2026
 
-Estado inicial limpo em main, F1 confirmada pelo conteúdo do HEAD
-`66fc2d86c6a635c222150df057db93699b24957e`. A referência remota local
-origin/main apontava para o mesmo commit; isso não é consulta atual ao remoto.
+Este fechamento começou com o Git limpo em main, HEAD
+`5928561fd59a8b2f74a978365a39f1fa0fa26cbc`, com a F2 já commitada.
+Os arquivos funcionais foram conferidos no HEAD. A referência local
+origin/main apontava para o mesmo commit; não houve consulta ao remoto.
 
-Comandos executados separadamente, com código de saída capturado:
+O usuário apresentou aprovação de tipos, lint, formatação, 91 testes,
+build e navegação anônima. Esses relatos não são execuções deste fechamento.
+O README e o registro sanitizado de navegador da implementação anterior
+foram consultados como evidência anterior. Os contratos, o ambiente e
+o helper de navegador foram reaproveitados; os comandos e cenários abaixo
+foram **executados novamente neste fechamento**, sem modificar código
+funcional, reinstalar dependências ou alterar o lockfile.
 
-| Diretório | Comando                                              | Saída | Resultado                                                                                 |
-| --------- | ---------------------------------------------------- | ----- | ----------------------------------------------------------------------------------------- |
-| frontend  | `npm.cmd ci`                                         | 0     | Instalação reproduzível, zero vulnerabilidades reportadas; manifesto/lockfile preservados |
-| frontend  | `npm.cmd ls --depth=0`                               | 0     | Dependências da F1 preservadas                                                            |
-| frontend  | `npm.cmd run typecheck`                              | 0     | Aplicação, testes, setup e configuração                                                   |
-| frontend  | `npm.cmd run lint`                                   | 0     | Sem erros ou avisos                                                                       |
-| frontend  | `npm.cmd run format:check`                           | 0     | Formatação aprovada                                                                       |
-| frontend  | `npm.cmd run test`                                   | 0     | **91 testes em 4 arquivos aprovados**                                                     |
-| frontend  | `npm.cmd run build`                                  | 0     | Build de produção gerado                                                                  |
-| raiz      | executor + `backend\manage.py check`                 | 0     | Nenhum problema                                                                           |
-| raiz      | executor + `backend\manage.py showmigrations --plan` | 0     | Todas aplicadas; nenhuma migration executada                                              |
-| raiz      | executor + pytest dos dois arquivos de auth acima    | 0     | **24 testes aprovados**                                                                   |
-| raiz      | executor + pytest global acima, uma execução         | 0     | **702 testes aprovados**                                                                  |
+### Comandos executados agora
 
-Também foi executado `npm.cmd run format`, com saída 0, somente no frontend.
-Um aviso inicial de lint sobre ref no cleanup foi corrigido, e a verificação
-afetada passou. Comandos Git/executor inicialmente bloqueados pela identidade
-do sandbox foram repetidos fora dele, sem alterar configuração global.
+Cada comando foi executado separadamente, com `$LASTEXITCODE` capturado:
+
+| Diretório | Comando                                    | Saída | Resultado                                         |
+| --------- | ------------------------------------------ | ----- | ------------------------------------------------- |
+| frontend  | `npm.cmd ls --depth=0`                     | 0     | Todas as versões existentes preservadas           |
+| frontend  | `npm.cmd run typecheck`                    | 0     | Aplicação, testes, setup e configuração aprovados |
+| frontend  | `npm.cmd run lint`                         | 0     | Sem erros ou avisos                               |
+| frontend  | `npm.cmd run format:check`                 | 0     | Aprovado; repetido após consolidar este README    |
+| frontend  | `npm.cmd run test`                         | 0     | **91 testes em 4 arquivos aprovados**             |
+| frontend  | `npm.cmd run build`                        | 0     | Build gerado antes do preview                     |
+| raiz      | executor + `backend\manage.py check`       | 0     | Nenhum problema                                   |
+| raiz      | executor + `-m pytest -p no:cacheprovider` | 0     | **702 testes aprovados**, uma execução global     |
+
+Nos comandos da raiz, “executor” significa o prefixo obrigatório
+`.\.venv\Scripts\python.exe .\.local\dev_local.py`; os comandos completos
+estão nas seções de execução e regressão acima.
+
+Antes de pytest, foram conferidos `pyproject.toml`, settings de teste e
+o fixture de banco do pytest-django instalado. A inspeção pelo executor
+confirmou PostgreSQL, nome de teste separado do banco de desenvolvimento,
+prefixo test_ e ausência de mirror. O runner usa setup_databases e
+teardown_databases; não existe substituição local desse fixture.
+A execução confirmou `config.settings.test (from ini)` e incluiu
+`test_auth_api.py` e `test_auth_schema.py`.
+Não foi necessário repeti-los isoladamente para diagnóstico.
+
+Backend: Python 3.14.7, Django 5.2.17 e pytest 9.1.1.
+Não foram aplicadas migrations ao banco de desenvolvimento.
+A criação e limpeza do banco de testes ficaram com o runner existente.
+**Cobertura não foi medida neste fechamento**; 97% é histórico.
 
 Build: 20 módulos, HTML 0,46 kB, CSS 0,78 kB e JavaScript 224,50 kB
 (70,46 kB gzip para JavaScript), conforme o Vite.
-Backend: Python 3.14.7, Django 5.2.17, pytest 9.1.1.
-Não foi gerada cobertura nesta etapa; 97% continua sendo dado histórico.
 
-### Smoke real e procedimento de conferência
+Git e consulta de portas inicialmente encontraram restrições de identidade
+do sandbox; as leituras foram repetidas fora dele, sem mudar configuração
+global. A leitura do lockfile com ConvertFrom-Json do PowerShell foi
+incompatível com a chave vazia do formato npm; a leitura final com
+JSON.parse do Node passou. Nenhum desses ajustes alterou o projeto.
 
-Foi usado Chrome 152.0.7977.83 headless com perfil temporário sem sessão
-pessoal, controlado pelo protocolo do navegador com Node nativo.
-Não foram instalados Playwright, Cypress ou outras bibliotecas.
+### Procedimento de smoke real
 
-Com Django e o servidor escolhido prontos:
+Use perfil temporário sem sessão pessoal. O fechamento utilizou Chrome
+152.0.7977.83 headless com protocolo do navegador e Node nativo, sem instalar
+bibliotecas E2E. As chamadas abaixo devem ocorrer com fetch nativo **no
+contexto da página**, por caminhos relativos, mantendo cookies e Origin
+naturais do navegador.
 
-1. Abra dev e preview em 360×800 e 1440×900. Confira main, h1, estágio F2,
-   idioma pt-BR, sessão anônima, ausência de overflow e erros JavaScript.
-2. Na rede, confirme CSRF 200 JSON e /me 403 JSON com o contrato acima,
-   sem fallback HTML. Inspecione apenas presença/atributos do cookie,
-   sem registrar valores, Cookie ou Set-Cookie.
-3. Após confirmar no código que JSON `{}` não autentica, envie uma sonda
-   POST login com esse corpo e sem token: deve rejeitar CSRF.
-   Obtenha CSRF na mesma sessão do navegador e repita `{}` com X-CSRFToken:
-   deve retornar os erros de email e password acima. Não compare o token
-   mascarado com o cookie e não registre seu valor.
-4. Bloqueie somente `*/api/v1/*` na rede do navegador e recarregue.
-   Confira a mensagem segura e o botão Tentar novamente, sem anonimato
-   ou repetição automática. Desbloqueie e acione retry; a consulta deve
-   recuperar o estado. Não interrompa servidores preexistentes.
+1. Inicie Django, aguarde a prontidão e só então abra dev ou preview.
+   Confira main, h1, estágio F2, idioma pt-BR e sessão anônima em
+   360×800 e 1440×900. Confira CSRF 200 JSON e /me 403 JSON, sem fallback HTML.
+2. Inspecione apenas presença e atributos do cookie, sem registrar valores,
+   Cookie, Set-Cookie, HAR ou capturas de tokens.
+3. Depois de confirmar que `LoginSerializer` rejeita `{}` antes de autenticar,
+   envie uma única sonda POST login com JSON `{}` e sem X-CSRFToken.
+   Use fetch nativo: o transporte da aplicação corretamente impede esse
+   envio sem token. Confirme a rejeição CSRF.
+4. Obtenha novo token em /csrf na mesma sessão do navegador e repita
+   exatamente `{}` com X-CSRFToken. Confirme os erros de email e password
+   documentados no contrato; um 400 isolado não basta. Mantenha o token
+   somente na memória da verificação e não o compare ao valor do cookie.
+5. Com a aplicação carregada, bloqueie apenas `*/api/v1/*` no navegador e
+   recarregue para iniciar nova consulta. Confira erro seguro, sem anonimato
+   nem repetição automática. Remova o bloqueio e clique em Tentar novamente:
+   a recuperação deve ocorrer sem recarregar a página inteira.
 
-Esse procedimento passou em dev e preview. Em cada origem, houve uma
-sonda POST sem token (403 HTML) e outra com token válido (400 JSON com
-os dois campos obrigatórios). O cookie csrftoken estava presente em
-127.0.0.1, Path /, SameSite=Lax, Secure=false e HttpOnly=false.
-Não houve cookie sessionid. Nenhum valor de token/cookie foi registrado.
+Para preview, gere o build antes de iniciar:
 
-As quatro capturas de layout e duas de indisponibilidade foram
-inspecionadas visualmente. Foco por teclado ficou visível, retry recuperou
-a tela e não houve exceção JavaScript não tratada nem console.error da
-aplicação. Rejeições HTTP 403/400 e bloqueios de rede esperados foram
-separados de erros JavaScript. Somente endpoints de auth foram consultados.
+```powershell
+npm.cmd run build
+npm.cmd run preview -- --host 127.0.0.1 --port 4173 --strictPort
+```
 
-O helper de navegador precisou ajustar a classificação de URLs para não
-confundir o módulo client.ts com chamada API e usar Tab real na checagem
-de foco. As verificações afetadas foram repetidas, preservando as sondas
-POST já executadas, e o smoke final terminou com saída 0.
+### Resultados reais por origem
 
-A configuração resolvida confirmou proxy compartilhado pelo preview e
-filesystem restrito. HEAD para arquivos existentes da raiz e backend
-retornou 403. A política também negou os caminhos privados de .local
-sem ler seu conteúdo.
+| Origem                           | GET /csrf/                            | GET /me/                         | POST login `{}` sem token | POST login `{}` com token válido        |
+| -------------------------------- | ------------------------------------- | -------------------------------- | ------------------------- | --------------------------------------- |
+| Desenvolvimento — 127.0.0.1:5173 | 200 JSON, csrfToken válido e no-store | 403 JSON, contrato anônimo exato | 403 HTML, rejeição CSRF   | 400 JSON, email e password obrigatórios |
+| Preview — 127.0.0.1:4173         | 200 JSON, csrfToken válido e no-store | 403 JSON, contrato anônimo exato | 403 HTML, rejeição CSRF   | 400 JSON, email e password obrigatórios |
 
-O ramo autenticado foi validado por mocks com identidade fictícia.
-Não havia sessão de teste autorizada para validá-lo no navegador;
-nenhuma conta foi criada ou senha alterada. Login completo, rotação
-pós-login, logout e produção não foram validados e estão fora desta entrega.
-O modo test:watch não foi exercitado; o comando padrão executou e encerrou.
+Os caminhos completos são os da seção de contratos. Em ambas as origens,
+a resposta positiva foi exatamente `email: ["Este campo é obrigatório."]`
+e `password: ["Este campo é obrigatório."]`. Os logs correspondentes do
+Django confirmaram falta de token nas sondas negativas. Foram realizados
+dois POSTs por origem, sem autenticar, fornecer senhas ou criar contas.
+Os GETs e o POST de validação retornaram JSON da API, não HTML da SPA.
 
-Vite dev e preview encerraram com saída 0. Django foi interrompido
+O cookie csrftoken foi recebido com domínio local 127.0.0.1, Path /,
+SameSite=Lax, Secure=false e HttpOnly=false, conforme as configurações
+efetivas consultadas pelo executor. Não houve cookie sessionid.
+Nenhum valor de token/cookie foi registrado.
+
+Dev e preview renderizaram corretamente em 360×800 e 1440×900, com main/h1,
+mensagem anônima, sem overflow horizontal ou conteúdo empresarial.
+As quatro capturas de layout e duas de indisponibilidade foram inspecionadas.
+Houve zero exceções JavaScript não tratadas e zero chamadas console.error
+da aplicação; respostas HTTP negativas e bloqueios de rede esperados
+foram mantidos e avaliados separadamente, sem suprimir logs.
+
+A falha controlada e o retry passaram nas duas origens. A tela mostrou
+erro seguro, o foco por teclado ficou visível e o clique recuperou a
+sessão anônima. `performance.timeOrigin` permaneceu igual durante o retry,
+confirmando recuperação sem recarregar a página inteira.
+O helper de navegador encerrou com saída 0.
+
+A configuração resolvida confirmou proxy herdado pelo preview, Host
+preservado e filesystem restrito ao frontend. HEAD para arquivos existentes
+da raiz e backend recebeu 403. A política negou caminhos privados de .local
+sem ler seu conteúdo. O ECONNREFUSED relatado antes de iniciar Django não
+se reproduziu com os servidores prontos; não foi tratado como defeito atual.
+
+### Limites e preservação
+
+O ramo authenticated foi validado pelos testes frontend com identidade
+fictícia. Não foi validado com sessão real no navegador. As sondas de POST
+comprovam CSRF e validação de campos neste cenário; não comprovam login
+completo, rotação pós-login ou logout. Esses fluxos, organizações, módulos
+empresariais e produção continuam fora da entrega. test:watch e cobertura
+não foram executados neste fechamento.
+
+Não foram encontradas pendências dentro do escopo de fechamento da F2.
+Somente este README foi consolidado; nenhum ajuste funcional foi necessário.
+Manifesto, lockfile, backend e .local foram preservados. Não houve staging,
+commit, push ou avanço para F3.
+
+Não havia servidores nas portas 8000, 5173 e 4173 no início. Os três processos
+usados neste fechamento foram próprios e tiveram prontidão e respostas
+confirmadas. Dev e preview encerraram com saída 0; Django foi interrompido
 intencionalmente após o smoke (saída 1 do terminal). A conferência final
-não encontrou listeners nas portas 8000, 5173 ou 4173 nem processos do
-Chrome com o perfil temporário da F2. Servidores preexistentes não foram
-interrompidos.
+encontrou as três portas livres e nenhum processo do Chrome deste fechamento.
+Somente o perfil temporário criado nesta execução foi removido, após validar
+seu caminho. Nenhum servidor ou perfil do usuário foi encerrado.

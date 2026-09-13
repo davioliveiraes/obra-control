@@ -27,14 +27,14 @@ test("preserva main e heading e consulta CSRF antes de apresentar ausência de s
   expect(
     within(main).getByRole("heading", { name: "ObraControl", level: 1 }),
   ).toBeVisible();
-  expect(within(main).getByText("Etapa F2 · Integração inicial")).toBeVisible();
+  expect(within(main).getByText("Etapa F3 · Acesso por sessão")).toBeVisible();
   expect(screen.getByRole("status")).toHaveTextContent("Verificando sessão…");
   expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
     "/api/v1/auth/csrf/",
   ]);
   await act(async () => csrf.resolve(jsonResponse({ csrfToken })));
   expect(await screen.findByText("Nenhuma sessão autenticada")).toBeVisible();
-  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Entrar" })).toBeVisible();
   expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
     "/api/v1/auth/csrf/",
     "/api/v1/auth/me/",
@@ -50,7 +50,7 @@ test("apresenta a identidade recebida sem inferir roles ou carregar módulos emp
   expect(screen.getByRole("status")).toHaveTextContent("Sessão autenticada:");
   expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
-  expect(screen.queryByRole("button")).not.toBeInTheDocument();
+  expect(screen.getByRole("button", { name: "Sair" })).toBeVisible();
   expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
     "/api/v1/auth/csrf/",
     "/api/v1/auth/me/",

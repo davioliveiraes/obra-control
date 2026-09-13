@@ -30,6 +30,7 @@ export interface RequestOptions {
   csrfToken?: string;
   signal?: AbortSignal;
   cache?: RequestCache;
+  expectedStatus?: number;
 }
 
 function internalPath(path: string): string {
@@ -125,6 +126,13 @@ export async function request(
       cache: options.cache,
     });
     if (response.redirected || response.type === "opaqueredirect") {
+      throw new ApiError({ kind: "invalid-response" });
+    }
+    if (
+      response.ok &&
+      options.expectedStatus !== undefined &&
+      response.status !== options.expectedStatus
+    ) {
       throw new ApiError({ kind: "invalid-response" });
     }
     if (response.status === 204) return undefined;

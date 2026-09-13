@@ -62,7 +62,49 @@ button:hover {
   background: #eee;
 }
 
-button:focus-visible {
+button:focus-visible,
+input:focus-visible {
   outline: 3px solid #2456a6;
   outline-offset: 3px;
+}
+
+form {
+  max-width: 26rem;
+}
+
+.field {
+  margin-bottom: 1rem;
+}
+
+label {
+  display: block;
+  margin-bottom: 0.25rem;
+}
+
+input {
+  width: 100%;
+  min-width: 0;
+  padding: 0.625rem;
+  border: 1px solid #555;
+  border-radius: 0.25rem;
+  background: #fff;
+  color: inherit;
+  font: inherit;
+}
+
+button:disabled,
+input:disabled {
+  opacity: 0.65;
+  cursor: wait;
+}
+
+.field-error {
+  margin: 0.25rem 0 0;
+  color: #8c2222;
+}
+
+.modules-note {
+  margin-top: 1rem;
+  color: #555;
+  font-size: 0.875rem;
 }

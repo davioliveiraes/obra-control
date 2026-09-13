@@ -1,15 +1,20 @@
 import { SessionStatus } from "../features/auth/SessionStatus";
-import { useSessionBootstrap } from "../features/auth/useSessionBootstrap";
+import { useAuthSession } from "../features/auth/useAuthSession";
 
 export default function App() {
-  const { state, retry } = useSessionBootstrap();
+  const { state, verify, login, logout } = useAuthSession();
 
   return (
     <main>
-      <p className="stage">Etapa F2 · Integração inicial</p>
+      <p className="stage">Etapa F3 · Acesso por sessão</p>
       <h1>ObraControl</h1>
       <p className="description">Gestão de obras para empresas.</p>
-      <SessionStatus state={state} onRetry={retry} />
+      <SessionStatus
+        state={state}
+        onVerify={verify}
+        onLogin={login}
+        onLogout={logout}
+      />
     </main>
   );
 }

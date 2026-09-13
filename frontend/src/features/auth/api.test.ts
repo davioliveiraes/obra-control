@@ -1,5 +1,12 @@
 import { beforeEach, expect, test, vi } from "vitest";
-import { getCsrfToken, getCurrentUser } from "./api";
+import {
+  getCsrfToken,
+  getCurrentUser,
+  login,
+  logout,
+  getLoginRejection,
+} from "./api";
+import { ApiError } from "../../shared/api/client";
 import {
   anonymousPayload,
   csrfToken,
@@ -114,3 +121,124 @@ test("204 não satisfaz nenhum objeto obrigatório", async () => {
     failure: { kind: "invalid-response" },
   });
 });
+
+test("login exige 200 e identidade válida, enviando a senha sem transformação", async () => {
+  fetchMock.mockResolvedValue(jsonResponse(user));
+  const credentials = {
+    email: "Pessoa@EXAMPLE.test",
+    password: "  senha fictícia  ",
+  };
+  await expect(login(credentials, csrfToken)).resolves.toEqual(user);
+  const [path, init] = fetchMock.mock.calls[0];
+  expect(path).toBe("/api/v1/auth/login/");
+  expect(init).toMatchObject({
+    method: "POST",
+    credentials: "same-origin",
+    mode: "same-origin",
+    redirect: "error",
+    cache: "no-store",
+  });
+  expect(init?.body).toBe(JSON.stringify(credentials));
+  expect(new Headers(init?.headers).get("X-CSRFToken")).toBe(csrfToken);
+  expect(fetchMock).toHaveBeenCalledTimes(1);
+});
+
+test.each([{}, null, [], { ...user, id: "7" }, { ...user, email: "" }])(
+  "login rejeita identidade inválida %j",
+  async (payload) => {
+    fetchMock.mockResolvedValue(jsonResponse(payload));
+    await expect(
+      login({ email: "pessoa@example.test", password: "fictícia" }, csrfToken),
+    ).rejects.toMatchObject({ failure: { kind: "invalid-response" } });
+  },
+);
+
+test.each([201, 202, 204])(
+  "login não aceita status %s inesperado",
+  async (status) => {
+    fetchMock.mockResolvedValue(
+      status === 204
+        ? new Response(null, { status })
+        : jsonResponse(user, status),
+    );
+    await expect(
+      login({ email: "pessoa@example.test", password: "fictícia" }, csrfToken),
+    ).rejects.toMatchObject({ failure: { kind: "invalid-response" } });
+  },
+);
+
+test("logout aceita somente 204 e não lê corpo nem envia JSON inventado", async () => {
+  const response = new Response(null, { status: 204 });
+  const read = vi.spyOn(response, "text");
+  fetchMock.mockResolvedValue(response);
+  await expect(logout(csrfToken)).resolves.toBeUndefined();
+  const [path, init] = fetchMock.mock.calls[0];
+  expect(path).toBe("/api/v1/auth/logout/");
+  expect(init).toMatchObject({
+    method: "POST",
+    credentials: "same-origin",
+    mode: "same-origin",
+  });
+  expect(init?.body).toBeUndefined();
+  expect(new Headers(init?.headers).get("X-CSRFToken")).toBe(csrfToken);
+  expect(read).not.toHaveBeenCalled();
+});
+
+test.each([200, 201, 202])(
+  "logout não aceita status %s com JSON",
+  async (status) => {
+    fetchMock.mockResolvedValue(jsonResponse({}, status));
+    await expect(logout(csrfToken)).rejects.toMatchObject({
+      failure: { kind: "invalid-response" },
+    });
+  },
+);
+
+test("logout mantém o 403 como falha, sem convertê-lo em sucesso ou anonimato", async () => {
+  fetchMock.mockResolvedValue(jsonResponse(anonymousPayload, 403));
+  await expect(logout(csrfToken)).rejects.toMatchObject({
+    failure: { kind: "http", status: 403 },
+  });
+});
+
+test("distingue credenciais, campos e rejeição CSRF sem mostrar mensagens brutas", () => {
+  const failure = (status: number, data: unknown) =>
+    new ApiError({ kind: "http", status, data });
+  expect(
+    getLoginRejection(failure(400, { detail: "Credenciais inválidas." })),
+  ).toEqual({ message: "E-mail ou senha inválidos" });
+  expect(
+    getLoginRejection(
+      failure(400, {
+        email: ["private traceback"],
+        password: ["sensitive data"],
+      }),
+    ),
+  ).toEqual({
+    message: "Confira os campos indicados.",
+    fields: {
+      email: "Confira o e-mail informado.",
+      password: "Confira a senha informada.",
+    },
+  });
+  expect(getLoginRejection(failure(403, undefined))?.message).toContain("CSRF");
+  for (const error of [
+    failure(400, { detail: "Credenciais inválidas.", extra: true }),
+    failure(400, { email: [] }),
+    failure(400, { email: [null] }),
+    failure(400, { unknown: ["error"] }),
+    failure(500, { detail: "Credenciais inválidas." }),
+    new ApiError({ kind: "network" }),
+  ])
+    expect(getLoginRejection(error)).toBeUndefined();
+});
+
+test.each([getCsrfToken, getCurrentUser])(
+  "leituras também rejeitam 201 com payload plausível",
+  async (operation) => {
+    fetchMock.mockResolvedValue(jsonResponse({ ...user, csrfToken }, 201));
+    await expect(operation()).rejects.toMatchObject({
+      failure: { kind: "invalid-response" },
+    });
+  },
+);

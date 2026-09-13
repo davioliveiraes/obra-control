@@ -4,6 +4,30 @@ import { csrfToken, deferred, jsonResponse } from "../../test/apiFixtures";
 
 const fetchMock = vi.fn<typeof fetch>();
 
+test.each([201, 202, 204, 206])(
+  "rejeita sucesso %s quando o contrato exige 200",
+  async (status) => {
+    fetchMock.mockResolvedValue(
+      status === 204
+        ? new Response(null, { status })
+        : jsonResponse({ ok: true }, status),
+    );
+    await expect(
+      request("/api/v1/resource/", { expectedStatus: 200 }),
+    ).rejects.toMatchObject({ failure: { kind: "invalid-response" } });
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+  },
+);
+
+test("status esperado não apaga uma rejeição HTTP real", async () => {
+  fetchMock.mockResolvedValue(jsonResponse({ detail: "Recusado." }, 403));
+  await expect(
+    request("/api/v1/resource/", { expectedStatus: 204 }),
+  ).rejects.toMatchObject({
+    failure: { kind: "http", status: 403, data: { detail: "Recusado." } },
+  });
+});
+
 beforeEach(() => {
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);

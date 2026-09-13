@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { StrictMode } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import App from "./App";
+import * as organizationsApi from "../features/organizations/api";
 import {
   anonymousPayload,
   csrfToken,
@@ -13,6 +14,9 @@ import {
 const fetchMock = vi.fn<typeof fetch>();
 
 beforeEach(() => {
+  vi.spyOn(organizationsApi, "listOrganizations").mockResolvedValue([]);
+  vi.spyOn(organizationsApi, "getCurrentOrganization").mockResolvedValue(null);
+  vi.stubGlobal("BroadcastChannel", undefined);
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 });
@@ -27,7 +31,9 @@ test("preserva main e heading e consulta CSRF antes de apresentar ausência de s
   expect(
     within(main).getByRole("heading", { name: "ObraControl", level: 1 }),
   ).toBeVisible();
-  expect(within(main).getByText("Etapa F3 · Acesso por sessão")).toBeVisible();
+  expect(
+    within(main).getByText("Etapa F5 · Contexto de organização"),
+  ).toBeVisible();
   expect(screen.getByRole("status")).toHaveTextContent("Verificando sessão…");
   expect(fetchMock.mock.calls.map(([path]) => path)).toEqual([
     "/api/v1/auth/csrf/",
@@ -47,7 +53,9 @@ test("apresenta a identidade recebida sem inferir roles ou carregar módulos emp
     .mockResolvedValueOnce(jsonResponse(user));
   render(<App />);
   expect(await screen.findByText(user.email)).toBeVisible();
-  expect(screen.getByRole("status")).toHaveTextContent("Sessão autenticada:");
+  expect(
+    within(screen.getByRole("region", { name: "Sessão" })).getByRole("status"),
+  ).toHaveTextContent("Sessão autenticada:");
   expect(screen.queryByRole("navigation")).not.toBeInTheDocument();
   expect(screen.queryByRole("table")).not.toBeInTheDocument();
   expect(screen.getByRole("button", { name: "Sair" })).toBeVisible();

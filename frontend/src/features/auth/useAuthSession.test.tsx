@@ -1,6 +1,7 @@
 import { act, renderHook, waitFor } from "@testing-library/react";
 import { beforeEach, expect, test, vi } from "vitest";
 import { useAuthSession } from "./useAuthSession";
+import type { ContextLease } from "./useAuthSession";
 import * as authApi from "./api";
 import {
   anonymousPayload,
@@ -204,3 +205,65 @@ test.each(["login", "logout"] as const)(
     expect(me).toHaveBeenCalledTimes(1);
   },
 );
+
+test("reserva de contexto bloqueia operações conflitantes no código até a recuperação por leitura", async () => {
+  vi.spyOn(authApi, "getCsrfToken").mockResolvedValue(csrfToken);
+  const me = vi.spyOn(authApi, "getCurrentUser").mockResolvedValue(user);
+  const logout = vi.spyOn(authApi, "logout").mockResolvedValue(undefined);
+  const { result } = renderHook(() => useAuthSession());
+  await waitFor(() =>
+    expect(result.current.state.status).toBe("authenticated"),
+  );
+  let lease: ContextLease | null = null;
+  act(() => {
+    lease = result.current.acquireContext();
+  });
+  if (!lease) throw new Error("Expected a context reservation");
+  const reservation: ContextLease = lease;
+  await act(async () => {
+    expect(result.current.acquireContext()).toBeNull();
+    await result.current.logout();
+    result.current.verify();
+  });
+  expect(logout).not.toHaveBeenCalled();
+  expect(me).toHaveBeenCalledTimes(1);
+  act(() => reservation.recoverable());
+  await act(async () => {
+    await result.current.logout();
+  });
+  expect(logout).not.toHaveBeenCalled();
+  act(() => {
+    reservation.release(true);
+  });
+  expect(result.current.state.status).toBe("checking");
+  await waitFor(() => expect(me).toHaveBeenCalledTimes(2));
+  expect(result.current.state.status).toBe("authenticated");
+});
+
+test("logout em andamento recusa reserva de contexto e agrupa invalidações até terminar", async () => {
+  const post = deferred<void>();
+  vi.spyOn(authApi, "getCsrfToken").mockResolvedValue(csrfToken);
+  const me = vi
+    .spyOn(authApi, "getCurrentUser")
+    .mockResolvedValueOnce(user)
+    .mockResolvedValue(null);
+  const logout = vi.spyOn(authApi, "logout").mockReturnValue(post.promise);
+  const { result } = renderHook(() => useAuthSession());
+  await waitFor(() =>
+    expect(result.current.state.status).toBe("authenticated"),
+  );
+  act(() => {
+    void result.current.logout();
+  });
+  await waitFor(() => expect(logout).toHaveBeenCalledTimes(1));
+  act(() => {
+    expect(result.current.acquireContext()).toBeNull();
+    result.current.invalidate();
+    result.current.invalidate();
+  });
+  expect(me).toHaveBeenCalledTimes(1);
+  await act(async () => post.resolve());
+  await waitFor(() => expect(me).toHaveBeenCalledTimes(3));
+  expect(result.current.state.status).toBe("anonymous");
+  expect(logout).toHaveBeenCalledTimes(1);
+});

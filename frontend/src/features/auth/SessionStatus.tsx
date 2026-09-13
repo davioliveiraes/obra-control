@@ -7,6 +7,7 @@ interface SessionStatusProps {
   onVerify: () => void;
   onLogin: (credentials: LoginCredentials) => Promise<void>;
   onLogout: () => Promise<void>;
+  logoutDisabled?: boolean;
 }
 
 const errors = {
@@ -28,6 +29,7 @@ export function SessionStatus({
   onVerify,
   onLogin,
   onLogout,
+  logoutDisabled = false,
 }: SessionStatusProps) {
   if (state.status === "error") {
     return (
@@ -66,7 +68,7 @@ export function SessionStatus({
             A sessão continua autenticada. A saída não foi confirmada.
           </p>
         )}
-        <button type="button" onClick={onLogout}>
+        <button type="button" onClick={onLogout} disabled={logoutDisabled}>
           Sair
         </button>
         <p className="modules-note">Os módulos ainda não estão disponíveis.</p>

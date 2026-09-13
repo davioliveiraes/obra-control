@@ -8,6 +8,7 @@ import {
 import { StrictMode } from "react";
 import { beforeEach, expect, test, vi } from "vitest";
 import App from "./App";
+import * as organizationsApi from "../features/organizations/api";
 import {
   anonymousPayload,
   csrfToken,
@@ -24,6 +25,9 @@ const credentials = {
 };
 
 beforeEach(() => {
+  vi.spyOn(organizationsApi, "listOrganizations").mockResolvedValue([]);
+  vi.spyOn(organizationsApi, "getCurrentOrganization").mockResolvedValue(null);
+  vi.stubGlobal("BroadcastChannel", undefined);
   fetchMock.mockReset();
   vi.stubGlobal("fetch", fetchMock);
 });
